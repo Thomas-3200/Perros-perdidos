@@ -1,0 +1,402 @@
+// ─── Perros Perdidos — Schema Prisma ─────────────────────────────────────────
+// Base de datos: PostgreSQL + extensión pgvector para embeddings visuales
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+// ─── ENUMS ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  owner
+  helper
+  finder
+  partner
+  moderator
+  admin
+}
+
+enum DogSize {
+  small
+  medium
+  large
+  extra_large
+}
+
+enum DogSex {
+  male
+  female
+  unknown
+}
+
+enum LostCaseStatus {
+  active
+  found
+  closed
+}
+
+enum ContactMethod {
+  phone
+  whatsapp
+  email
+  in_app
+}
+
+enum DogSightingStatus {
+  still_there
+  gone
+  retained
+  injured
+  unknown
+}
+
+enum SightingSource {
+  app
+  social_import
+}
+
+enum ImportedCaseSourceType {
+  link
+  screenshot
+  photo
+  text
+}
+
+enum ImportedCaseStatus {
+  pending
+  processed
+  rejected
+}
+
+enum ConfidenceLevel {
+  high
+  medium
+  low
+}
+
+enum MatchStatus {
+  pending
+  confirmed
+  rejected
+}
+
+enum NotificationType {
+  match_high
+  match_medium
+  sighting_nearby
+  case_update
+  reunion
+  helper_alert
+  support_checkin
+}
+
+enum ContributionType {
+  sighting
+  social_import
+  helper_mode
+  reunion_share
+}
+
+enum PartnerType {
+  shelter
+  vet
+  rescuer
+  ngo
+}
+
+// ─── USUARIOS ─────────────────────────────────────────────────────────────────
+
+model User {
+  id               String   @id @default(cuid())
+  email            String   @unique
+  phone            String?
+  name             String
+  avatarUrl        String?
+  role             UserRole @default(owner)
+  reputationScore  Int      @default(0)
+
+  // Ubicación default del usuario (último conocida)
+  locationLat      Float?
+  locationLng      Float?
+  locationAddress  String?
+  locationCity     String?
+  locationCountry  String?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relaciones
+  dogs             Dog[]
+  lostCases        LostCase[]
+  sightings        Sighting[]
+  importedCases    ImportedSocialCase[]
+  contributions    Contribution[]
+  notifications    Notification[]
+  supportSessions  SupportSession[]
+  reviewedMatches  Match[]            @relation("ReviewedBy")
+
+  @@map("users")
+}
+
+// ─── PERROS ───────────────────────────────────────────────────────────────────
+
+model Dog {
+  id           String    @id @default(cuid())
+  ownerId      String
+  owner        User      @relation(fields: [ownerId], references: [id])
+
+  name         String
+  breed        String?
+  color        String[]  // Ej: ["brown", "white"]
+  size         DogSize
+  age          Float?    // Años aprox.
+  sex          DogSex    @default(unknown)
+  neutered     Boolean?
+  microchipId  String?
+  photos       String[]  // URLs de Cloudinary
+  description  String?   // Señas particulares
+
+  // Perfil QR (futuro)
+  qrCodeId     String?
+  qrProfile    QrProfile?
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  lostCases    LostCase[]
+
+  @@map("dogs")
+}
+
+// ─── CASOS DE PERROS PERDIDOS ─────────────────────────────────────────────────
+
+model LostCase {
+  id              String         @id @default(cuid())
+  dogId           String
+  dog             Dog            @relation(fields: [dogId], references: [id])
+  ownerId         String
+  owner           User           @relation(fields: [ownerId], references: [id])
+
+  status          LostCaseStatus @default(active)
+
+  // Última ubicación conocida
+  lastSeenLat     Float
+  lastSeenLng     Float
+  lastSeenAddress String?
+  lastSeenCity    String?
+  lastSeenCountry String?
+  lastSeenAt      DateTime
+
+  reward          Float?
+  rewardCurrency  String?        @default("ARS")
+  behaviorNotes   String?        // "Asustadizo, responde a Max"
+  contactMethod   ContactMethod
+  contactValue    String
+  searchRadiusKm  Float          @default(50)
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  closedAt        DateTime?
+
+  // Relaciones
+  matches         Match[]
+  notifications   Notification[]
+  reunionStory    ReunionStory?
+  supportSessions SupportSession[]
+
+  @@map("lost_cases")
+}
+
+// ─── AVISTAMIENTOS ────────────────────────────────────────────────────────────
+
+model Sighting {
+  id             String            @id @default(cuid())
+  reporterId     String
+  reporter       User              @relation(fields: [reporterId], references: [id])
+
+  // Ubicación del avistamiento
+  locationLat    Float
+  locationLng    Float
+  locationAddress String?
+  locationCity   String?
+
+  seenAt         DateTime
+  photos         String[]          // URLs de Cloudinary
+  dogStatus      DogSightingStatus @default(unknown)
+  description    String?
+  source         SightingSource    @default(app)
+
+  importedCaseId String?
+  importedCase   ImportedSocialCase? @relation(fields: [importedCaseId], references: [id])
+
+  // Embedding visual (pgvector) — se llena async después de procesar la foto
+  photoEmbedding Unsupported("vector(1024)")?
+
+  createdAt      DateTime          @default(now())
+
+  matches        Match[]
+
+  @@map("sightings")
+}
+
+// ─── CASOS IMPORTADOS DESDE REDES SOCIALES (HUMAN API) ───────────────────────
+
+model ImportedSocialCase {
+  id            String                 @id @default(cuid())
+  submittedById String
+  submittedBy   User                   @relation(fields: [submittedById], references: [id])
+
+  sourceType    ImportedCaseSourceType
+  rawInput      String                 // URL, texto, o path de imagen subida
+  extractedData Json?                  // ExtractedCaseData (ver shared/types/case.ts)
+  status        ImportedCaseStatus     @default(pending)
+  createdCaseId String?                // ID del sighting o lost_case generado
+
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  sightings     Sighting[]
+
+  @@map("imported_social_cases")
+}
+
+// ─── MATCHES ──────────────────────────────────────────────────────────────────
+
+model Match {
+  id             String          @id @default(cuid())
+  lostCaseId     String
+  lostCase       LostCase        @relation(fields: [lostCaseId], references: [id])
+  sightingId     String
+  sighting       Sighting        @relation(fields: [sightingId], references: [id])
+
+  // Scores individuales (0-1)
+  visualScore    Float           // Similitud CLIP (peso 50%)
+  geoScore       Float           // Distancia normalizada (peso 25%)
+  timeScore      Float           // Proximidad temporal (peso 15%)
+  attributeScore Float           // Raza, color, tamaño (peso 10%)
+  totalScore     Float           // Score combinado final
+
+  confidenceLevel ConfidenceLevel
+  status          MatchStatus    @default(pending)
+
+  // Revisión humana
+  reviewedById    String?
+  reviewedBy      User?          @relation("ReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  ownerConfirmedAt DateTime?
+
+  createdAt       DateTime       @default(now())
+
+  @@unique([lostCaseId, sightingId]) // No duplicar el mismo par
+  @@map("matches")
+}
+
+// ─── CONTRIBUCIONES COMUNITARIAS ─────────────────────────────────────────────
+
+model Contribution {
+  id           String           @id @default(cuid())
+  userId       String
+  user         User             @relation(fields: [userId], references: [id])
+  type         ContributionType
+  caseId       String?
+  pointsEarned Int              @default(0)
+  createdAt    DateTime         @default(now())
+
+  @@map("contributions")
+}
+
+// ─── HISTORIAS DE REUNIFICACIÓN ───────────────────────────────────────────────
+
+model ReunionStory {
+  id               String    @id @default(cuid())
+  lostCaseId       String    @unique
+  lostCase         LostCase  @relation(fields: [lostCaseId], references: [id])
+  ownerId          String
+
+  photos           String[]
+  videoUrl         String?
+  storyText        String?       // Escrito por el dueño
+  aiGeneratedStory String?       // Generado por Claude
+
+  published        Boolean   @default(false)
+  publishedAt      DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@map("reunion_stories")
+}
+
+// ─── SESIONES DE APOYO EMOCIONAL ─────────────────────────────────────────────
+
+model SupportSession {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  lostCaseId   String
+  lostCase     LostCase @relation(fields: [lostCaseId], references: [id])
+
+  messages     Json     @default("[]") // SupportMessage[]
+  startedAt    DateTime @default(now())
+  lastActiveAt DateTime @updatedAt
+
+  @@map("support_sessions")
+}
+
+// ─── NOTIFICACIONES ───────────────────────────────────────────────────────────
+
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id])
+  lostCaseId  String?
+  lostCase    LostCase?        @relation(fields: [lostCaseId], references: [id])
+
+  type        NotificationType
+  title       String
+  body        String
+  data        Json?            // Payload adicional (matchId, caseId, etc.)
+  read        Boolean          @default(false)
+  sentAt      DateTime         @default(now())
+
+  @@map("notifications")
+}
+
+// ─── PERFILES QR (FUTURO — FASE 4) ───────────────────────────────────────────
+
+model QrProfile {
+  id          String   @id @default(cuid())
+  dogId       String   @unique
+  dog         Dog      @relation(fields: [dogId], references: [id])
+
+  slug        String   @unique // URL amigable: /perro/max-garcia
+  publicUrl   String
+  contactInfo String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@map("qr_profiles")
+}
+
+// ─── SOCIOS (REFUGIOS, VETS, RESCATISTAS) ────────────────────────────────────
+
+model Partner {
+  id                    String      @id @default(cuid())
+  name                  String
+  type                  PartnerType
+  locationLat           Float
+  locationLng           Float
+  locationAddress       String?
+  contact               String
+  verified              Boolean     @default(false)
+  dogsCurrentlyHolding  String[]    @default([])
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  @@map("partners")
+}

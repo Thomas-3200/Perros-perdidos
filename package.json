@@ -1,0 +1,20 @@
+{
+  "name": "perros-perdidos",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Red distribuida de reunificación canina — comunidad + IA",
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "dev": "pnpm --parallel -r dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "db:generate": "pnpm --filter @perros/db db:generate",
+    "db:migrate": "pnpm --filter @perros/db db:migrate",
+    "db:studio": "pnpm --filter @perros/db db:studio"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "paths": {
+      "@perros/shared": ["../shared/src/index.ts"],
+      "@perros/shared/*": ["../shared/src/*"],
+      "@perros/db": ["../db/src/index.ts"],
+      "@perros/db/*": ["../db/src/*"],
+      "@perros/ai": ["../ai/src/index.ts"],
+      "@perros/ai/*": ["../ai/src/*"]
+    }
+  },
+  "include": ["src/**/*"]
+}
