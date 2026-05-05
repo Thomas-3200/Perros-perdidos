@@ -6,9 +6,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import prisma from '@perros/db';
-import { requireAuth }   from '../lib/auth.js';
-import { uploadFile }    from '../lib/upload.js';
-import { enqueueIngest } from '../lib/queue.js';
+import { requireAuth }     from '../lib/auth.js';
+import { uploadFile }      from '../lib/upload.js';
+import { parseImportedCase } from '@perros/ai';
 
 const CreateImportSchema = z.object({
   sourceType: z.enum(['link', 'screenshot', 'photo', 'text']),
@@ -60,9 +60,11 @@ export async function ingestRoutes(app: FastifyInstance) {
       },
     });
 
-    // Encolar para procesamiento IA asíncrono — fire & forget para no bloquear la respuesta
-    enqueueIngest(imported.id).catch((err) => {
-      console.error('[ingest] Error al encolar job:', err);
+    // Procesar con IA en background (sin Redis — directo en el proceso)
+    setImmediate(() => {
+      parseImportedCase(imported.id).catch((err) => {
+        console.error('[ingest] Error procesando caso con IA:', err);
+      });
     });
 
     return reply.code(201).send({

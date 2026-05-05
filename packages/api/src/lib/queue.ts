@@ -9,6 +9,13 @@ import IORedis from 'ioredis';
 
 const redisConnection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
   maxRetriesPerRequest: null,
+  enableOfflineQueue: false,
+  lazyConnect: true,
+});
+
+// Evitar que ECONNRESET crashee el proceso
+redisConnection.on('error', (err) => {
+  console.warn('[redis] Conexión error (no fatal):', err.message);
 });
 
 // ─── Definición de colas ──────────────────────────────────────────────────────
