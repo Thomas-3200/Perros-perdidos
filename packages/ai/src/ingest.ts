@@ -30,7 +30,9 @@ Responde SOLO con JSON válido siguiendo esta estructura exacta (sin markdown, s
   "location": {
     "address": "dirección si la hay",
     "city": "ciudad",
-    "country": "país (por defecto Argentina si no se indica)"
+    "country": "país (por defecto Argentina si no se indica)",
+    "lat": número de latitud estimada según la ciudad (ej: -34.6037 para Buenos Aires), o null,
+    "lng": número de longitud estimada según la ciudad (ej: -58.3816 para Buenos Aires), o null
   },
   "seenAt": "fecha en ISO 8601 si se puede inferir, o null",
   "contactInfo": "teléfono/email/usuario de red social del contacto si aparece",
@@ -117,13 +119,49 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
       extractedData = mapExtracted(JSON.parse(cleaned));
     }
 
+    const isUsable = extractedData.confidence > 0.3;
+
     await prisma.importedSocialCase.update({
       where: { id: importedCaseId },
       data: {
         extractedData: extractedData as object,
-        status: extractedData.confidence > 0.3 ? 'processed' : 'rejected',
+        status: isUsable ? 'processed' : 'rejected',
       },
     });
+
+    // ── Auto-crear avistamiento si hay suficiente info ────────────────────────
+    if (isUsable) {
+      const loc = extractedData.location;
+      const hasCoords = loc && loc.lat !== 0 && loc.lng !== 0;
+
+      // Fotos: si el caso era screenshot/photo usamos la URL ya subida a Cloudinary
+      const photos = (imported.sourceType === 'screenshot' || imported.sourceType === 'photo')
+        ? [imported.rawInput]
+        : [];
+
+      if (hasCoords || loc?.city) {
+        // Coordenadas: usar las de la IA o fallback al centro de Argentina
+        const lat = hasCoords ? loc!.lat : -38.4161;
+        const lng = hasCoords ? loc!.lng : -63.6167;
+
+        const sighting = await prisma.sighting.create({
+          data: {
+            reporterId:      imported.submittedById,
+            locationLat:     lat,
+            locationLng:     lng,
+            locationAddress: loc?.address,
+            locationCity:    loc?.city,
+            seenAt:          extractedData.seenAt ?? imported.createdAt,
+            photos,
+            description:     extractedData.description,
+            source:          'social_import',
+            importedCaseId:  imported.id,
+          },
+        });
+
+        console.log(`[ingest] Avistamiento creado automáticamente: ${sighting.id}`);
+      }
+    }
 
     console.log(`[ingest] Caso ${importedCaseId} procesado con Claude. Confianza: ${extractedData.confidence}`);
 
@@ -138,9 +176,16 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
 
 // ─── Mapea la respuesta de Claude a ExtractedCaseData ────────────────────────
 function mapExtracted(raw: Record<string, unknown>): ExtractedCaseData {
+  const rawLoc = raw.location as Record<string, unknown> | undefined;
   return {
     description:   raw.description  as string | undefined,
-    location:      raw.location     as ExtractedCaseData['location'] | undefined,
+    location: rawLoc ? {
+      lat:     Number(rawLoc.lat ?? 0),
+      lng:     Number(rawLoc.lng ?? 0),
+      address: rawLoc.address as string | undefined,
+      city:    rawLoc.city    as string | undefined,
+      country: rawLoc.country as string | undefined,
+    } : undefined,
     seenAt:        raw.seenAt ? new Date(raw.seenAt as string) : undefined,
     photos:        [],
     contactInfo:   raw.contactInfo  as string | undefined,
