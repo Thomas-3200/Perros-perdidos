@@ -72,7 +72,7 @@ async function uploadToCloudinary(
   });
 
   const timeoutPromise = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error('Cloudinary tardó demasiado. Intentá de nuevo.')), 15_000),
+    setTimeout(() => reject(new Error('Cloudinary tardó demasiado. Intentá de nuevo.')), 30_000),
   );
 
   return Promise.race([uploadPromise, timeoutPromise]);
