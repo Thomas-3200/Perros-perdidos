@@ -10,6 +10,29 @@ function getAuthHeader(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/** fetch con timeout — para llamadas con FormData que no usan `request` */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = 20_000,
+): Promise<unknown> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.error?.message ?? `HTTP ${res.status}`);
+    return json;
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('La solicitud tardó demasiado. Verificá tu conexión e intentá de nuevo.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -71,12 +94,11 @@ export const api = {
     },
     get:    (id: string) => request(`/api/v1/sightings/${id}`),
     // Para avistamientos usamos FormData (con fotos), no JSON
-    create: (formData: FormData) =>
-      fetch(`${API_URL}/api/v1/sightings`, {
-        method:  'POST',
-        headers: { ...getAuthHeader() },
-        body:    formData,
-      }).then(r => r.json()),
+    create: (formData: FormData) => fetchWithTimeout(`${API_URL}/api/v1/sightings`, {
+      method:  'POST',
+      headers: { ...getAuthHeader() },
+      body:    formData,
+    }),
   },
 
   // ─── Matches ─────────────────────────────────────────────────────────────────
@@ -95,11 +117,11 @@ export const api = {
     submitText:    (rawInput: string) =>
       request('/api/v1/ingest/social', { method: 'POST', body: JSON.stringify({ sourceType: 'text', rawInput }) }),
     submitImage:   (formData: FormData) =>
-      fetch(`${API_URL}/api/v1/ingest/social`, {
+      fetchWithTimeout(`${API_URL}/api/v1/ingest/social`, {
         method:  'POST',
         headers: { ...getAuthHeader() },
         body:    formData,
-      }).then(r => r.json()),
+      }),
     myImports: () => request('/api/v1/ingest'),
   },
 
