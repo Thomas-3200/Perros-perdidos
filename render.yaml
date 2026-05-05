@@ -4,7 +4,7 @@ services:
     env: node
     region: oregon
     plan: free
-    buildCommand: pnpm install --frozen-lockfile
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @perros/db db:generate
     startCommand: pnpm --filter @perros/api start
     healthCheckPath: /health
     envVars:
