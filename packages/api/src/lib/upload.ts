@@ -46,7 +46,7 @@ async function uploadToCloudinary(
 ): Promise<UploadResult> {
   const buffer = await file.toBuffer();
 
-  return new Promise((resolve, reject) => {
+  const uploadPromise = new Promise<UploadResult>((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
         folder:        `perros-perdidos/${folder}`,
@@ -70,6 +70,12 @@ async function uploadToCloudinary(
     );
     stream.end(buffer);
   });
+
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Cloudinary tardó demasiado. Intentá de nuevo.')), 15_000),
+  );
+
+  return Promise.race([uploadPromise, timeoutPromise]);
 }
 
 async function uploadToLocal(

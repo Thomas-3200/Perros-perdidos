@@ -9,8 +9,10 @@
  */
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Link2, FileText, Image as ImageIcon, Sparkles, ChevronLeft, Check } from 'lucide-react';
+import { Link2, FileText, Image as ImageIcon, Sparkles, ChevronLeft, Check, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { isLoggedIn } from '@/lib/auth';
+import { AuthModal } from '@/components/auth/AuthModal';
 import clsx from 'clsx';
 
 type InputMode = 'link' | 'text' | 'image';
@@ -21,11 +23,17 @@ export default function ReportarRedSocialPage() {
   const [link,    setLink]    = useState('');
   const [text,    setText]    = useState('');
   const [image,   setImage]   = useState<File | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [done,    setDone]    = useState(false);
-  const [error,   setError]   = useState('');
+  const [loading,   setLoading]   = useState(false);
+  const [done,      setDone]      = useState(false);
+  const [error,     setError]     = useState('');
+  const [showAuth,  setShowAuth]  = useState(false);
 
   async function handleSubmit() {
+    // Verificar sesión antes de enviar
+    if (!isLoggedIn()) {
+      setShowAuth(true);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -45,6 +53,12 @@ export default function ReportarRedSocialPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleAuthSuccess() {
+    setShowAuth(false);
+    // Continuar con el envío después del login
+    await handleSubmit();
   }
 
   if (done) {
@@ -75,6 +89,12 @@ export default function ReportarRedSocialPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {showAuth && (
+        <AuthModal
+          onSuccess={handleAuthSuccess}
+          onClose={() => setShowAuth(false)}
+        />
+      )}
       <header className="bg-white border-b border-gray-100 px-4 py-4 flex items-center gap-3">
         <button onClick={() => router.back()} className="p-2 rounded-xl hover:bg-gray-100 transition-colors">
           <ChevronLeft className="w-5 h-5" />
@@ -171,7 +191,7 @@ export default function ReportarRedSocialPage() {
           className="btn-primary w-full flex items-center justify-center gap-2"
         >
           {loading
-            ? 'Procesando con IA...'
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Enviando…</>
             : <><Sparkles className="w-5 h-5" /> Enviar a la IA</>
           }
         </button>
