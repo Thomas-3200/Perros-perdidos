@@ -5,7 +5,7 @@
  * - Últimas reunificaciones exitosas
  */
 import Link from 'next/link';
-import { Heart, MapPin, Search, PawPrint, Users, Sparkles } from 'lucide-react';
+import { Heart, MapPin, Search, PawPrint, Users, Sparkles, Eye } from 'lucide-react';
 import { ActiveCasesFeed } from '@/components/cases/ActiveCasesFeed';
 import { ReunionFeed }     from '@/components/reunion/ReunionFeed';
 import { StatsBar }        from '@/components/stats/StatsBar';
@@ -90,6 +90,19 @@ export default function HomePage() {
             </Link>
           </div>
           <ActiveCasesFeed />
+        </section>
+
+        {/* Avistamientos recientes */}
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+              <Eye className="w-5 h-5 text-brand-500" />
+              Perros avistados esta semana
+            </h2>
+            <Link href="/avistamientos" className="text-brand-500 text-sm font-medium hover:underline">
+              Ver todos →
+            </Link>
+          </div>
         </section>
 
         {/* Reuniones exitosas */}

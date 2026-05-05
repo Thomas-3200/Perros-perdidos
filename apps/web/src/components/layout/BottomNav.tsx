@@ -2,15 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, PlusCircle, User, Users } from 'lucide-react';
+import { Home, Search, PlusCircle, User, Eye } from 'lucide-react';
 import clsx from 'clsx';
 
 const LINKS = [
-  { href: '/',                 label: 'Inicio',   icon: Home        },
-  { href: '/buscar',           label: 'Buscar',   icon: Search      },
-  { href: '/reportar/perdido', label: 'Reportar', icon: PlusCircle  },
-  { href: '/perfil',           label: 'Perfil',   icon: User        },
-  { href: '/ayudar',           label: 'Ayudar',   icon: Users       },
+  { href: '/',                  label: 'Inicio',      icon: Home       },
+  { href: '/buscar',            label: 'Buscar',      icon: Search     },
+  { href: '/reportar/perdido',  label: 'Reportar',    icon: PlusCircle },
+  { href: '/avistamientos',     label: 'Avistados',   icon: Eye        },
+  { href: '/perfil',            label: 'Perfil',      icon: User       },
 ];
 
 export function BottomNav() {
