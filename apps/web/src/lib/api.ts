@@ -13,19 +13,33 @@ function getAuthHeader(): Record<string, string> {
 async function request<T>(
   path: string,
   options: RequestInit = {},
+  timeoutMs = 20_000,
 ): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeader(),
-      ...(options.headers as Record<string, string>),
-    },
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  const json = await res.json();
-  if (!res.ok) throw new Error(json?.error?.message ?? `HTTP ${res.status}`);
-  return json;
+  try {
+    const res = await fetch(`${API_URL}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeader(),
+        ...(options.headers as Record<string, string>),
+      },
+    });
+
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.error?.message ?? `HTTP ${res.status}`);
+    return json;
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('La solicitud tardó demasiado. Verificá tu conexión e intentá de nuevo.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ─── Usuarios ─────────────────────────────────────────────────────────────────

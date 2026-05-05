@@ -60,8 +60,10 @@ export async function ingestRoutes(app: FastifyInstance) {
       },
     });
 
-    // Encolar para procesamiento IA asíncrono
-    await enqueueIngest(imported.id);
+    // Encolar para procesamiento IA asíncrono — fire & forget para no bloquear la respuesta
+    enqueueIngest(imported.id).catch((err) => {
+      console.error('[ingest] Error al encolar job:', err);
+    });
 
     return reply.code(201).send({
       success: true,

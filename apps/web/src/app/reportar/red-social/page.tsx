@@ -126,7 +126,10 @@ export default function ReportarRedSocialPage() {
             <input className="input" type="url"
               placeholder="https://facebook.com/groups/... o https://instagram.com/..."
               value={link} onChange={e => setLink(e.target.value)} />
-            <p className="text-xs text-gray-400">Funciona con Facebook, Instagram, Twitter/X, etc.</p>
+            <p className="text-xs text-gray-400">
+              ⚠️ Los posts privados de Facebook no se pueden leer automáticamente.
+              Si el post es privado, usá la opción <strong>Texto</strong> (pegá el contenido) o <strong>Screenshot</strong>.
+            </p>
           </div>
         )}
 
