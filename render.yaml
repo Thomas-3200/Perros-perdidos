@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: perros-perdidos-api
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: pnpm install --frozen-lockfile
+    startCommand: pnpm --filter @perros/api start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      # Las siguientes variables se configuran en el dashboard de Render:
+      # DATABASE_URL, REDIS_URL, JWT_SECRET, CORS_ORIGIN, API_BASE_URL,
+      # CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
