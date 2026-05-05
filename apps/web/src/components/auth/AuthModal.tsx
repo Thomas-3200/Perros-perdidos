@@ -5,6 +5,9 @@ import { X, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { saveSession, type StoredUser } from '@/lib/auth';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+const FB_APP_ID = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID ?? '';
+
 interface Props {
   onSuccess: () => void;
   onClose:   () => void;
@@ -73,6 +76,29 @@ export function AuthModal({ onSuccess, onClose }: Props) {
               : 'Es rápido, solo necesitamos tu nombre y email'}
           </p>
         </div>
+
+        {/* Login con Facebook */}
+        {FB_APP_ID && (
+          <>
+            <a
+              href={`${API_URL}/api/v1/users/auth/facebook`}
+              className="flex items-center justify-center gap-3 w-full py-3 px-4 rounded-2xl
+                         bg-[#1877F2] text-white font-semibold text-sm hover:bg-[#166FE5]
+                         transition-colors shadow-sm"
+            >
+              <svg className="w-5 h-5 fill-white" viewBox="0 0 24 24">
+                <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073c0 6.026 4.388 11.02 10.125 11.927v-8.437H7.078v-3.49h3.047V9.43c0-3.007 1.79-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.49h-2.796v8.437C19.612 23.093 24 18.099 24 12.073z"/>
+              </svg>
+              Continuar con Facebook
+            </a>
+
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-gray-200" />
+              <span className="text-xs text-gray-400">o con email</span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
+          </>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === 'register' && (

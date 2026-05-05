@@ -4,43 +4,47 @@
  * Entrada: link, screenshot, foto o texto
  * Salida:  ExtractedCaseData estructurado
  *
- * Usa GPT-4o para:
- * - OCR de screenshots
+ * Usa Claude (Anthropic) para:
+ * - OCR de screenshots e imágenes
  * - Extracción de entidades (fecha, ubicación, descripción, fotos, contacto)
  * - Clasificación: ¿es un perro PERDIDO o ENCONTRADO?
  */
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import prisma from '@perros/db';
 import type { ExtractedCaseData } from '@perros/shared';
 
-let _openai: OpenAI | null = null;
-const getOpenAI = () => { if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? 'placeholder' }); return _openai; };
+let _anthropic: Anthropic | null = null;
+const getAnthropic = () => {
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _anthropic;
+};
 
-const EXTRACTION_PROMPT = `Eres un asistente especializado en analizar publicaciones sobre perros perdidos.
+const EXTRACTION_PROMPT = `Eres un asistente especializado en analizar publicaciones sobre perros perdidos en Argentina y Latinoamérica.
 
-Analiza el contenido provisto (puede ser texto de un post, un screenshot, o una URL) y extrae la información relevante.
+Analiza el contenido provisto (puede ser texto de un post, un screenshot, o una imagen) y extrae la información relevante.
 
-Responde SOLO con JSON válido siguiendo esta estructura exacta:
+Responde SOLO con JSON válido siguiendo esta estructura exacta (sin markdown, sin texto adicional):
 {
   "caseType": "lost|found|unknown",
-  "description": "descripción del perro",
+  "description": "descripción del perro con todas las señas particulares que encuentres",
   "location": {
     "address": "dirección si la hay",
     "city": "ciudad",
-    "country": "país"
+    "country": "país (por defecto Argentina si no se indica)"
   },
   "seenAt": "fecha en ISO 8601 si se puede inferir, o null",
-  "contactInfo": "teléfono/email/usuario de red social del contacto",
+  "contactInfo": "teléfono/email/usuario de red social del contacto si aparece",
   "reward": número en moneda local o null,
   "dogAttributes": {
     "breed": "raza o null",
-    "color": ["colores"],
+    "color": ["colores del perro"],
     "size": "small|medium|large|extra_large o null"
   },
   "confidence": número entre 0 y 1 indicando confianza de la extracción
 }
 
-Si el contenido no tiene relación con perros perdidos o encontrados, pon confidence: 0 y caseType: "unknown".`;
+Si el contenido no tiene relación con perros perdidos o encontrados, pon confidence: 0 y caseType: "unknown".
+Si hay información parcial, extraé lo que puedas y ajustá confidence al porcentaje de datos disponibles.`;
 
 export async function parseImportedCase(importedCaseId: string): Promise<void> {
   const imported = await prisma.importedSocialCase.findUniqueOrThrow({
@@ -50,45 +54,65 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
   let extractedData: ExtractedCaseData;
 
   try {
+    const claude = getAnthropic();
+
     if (imported.sourceType === 'screenshot' || imported.sourceType === 'photo') {
-      // Imagen → GPT-4o Vision con OCR
-      const response = await getOpenAI().chat.completions.create({
-        model: 'gpt-4o',
+      // ── Imagen/screenshot → Claude Vision con OCR ──────────────────────────
+
+      // Descargar la imagen desde Cloudinary como base64
+      const imageUrl = imported.rawInput;
+      const imageRes = await fetch(imageUrl);
+      if (!imageRes.ok) throw new Error(`No se pudo descargar la imagen: ${imageRes.status}`);
+
+      const buffer = await imageRes.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString('base64');
+      const contentType = imageRes.headers.get('content-type') ?? 'image/jpeg';
+      const mediaType = (contentType.split(';')[0].trim()) as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
+      const response = await claude.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 800,
         messages: [
           {
             role: 'user',
             content: [
               {
-                type: 'image_url',
-                image_url: { url: imported.rawInput, detail: 'high' },
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: mediaType,
+                  data: base64,
+                },
               },
-              { type: 'text', text: EXTRACTION_PROMPT },
+              {
+                type: 'text',
+                text: EXTRACTION_PROMPT,
+              },
             ],
           },
         ],
-        max_tokens: 600,
-        temperature: 0,
       });
-      const raw = response.choices[0]?.message?.content ?? '{}';
+
+      const raw = response.content[0]?.type === 'text' ? response.content[0].text : '{}';
       const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
       extractedData = mapExtracted(JSON.parse(cleaned));
 
     } else {
-      // Texto / link → contexto solo texto
+      // ── Texto / link → solo texto ──────────────────────────────────────────
       const content = imported.sourceType === 'link'
-        ? `URL del post: ${imported.rawInput}\n\nExtrae la información disponible solo de la URL (sin acceder a ella).`
+        ? `Se compartió este link de red social: ${imported.rawInput}\n\nNo puedes acceder a la URL, pero intentá inferir lo que puedas del propio link (nombre del grupo, palabras clave, etc.).`
         : imported.rawInput;
 
-      const response = await getOpenAI().chat.completions.create({
-        model: 'gpt-4o',
+      const response = await claude.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 800,
+        system: EXTRACTION_PROMPT,
         messages: [
-          { role: 'system', content: EXTRACTION_PROMPT },
-          { role: 'user',   content },
+          { role: 'user', content },
         ],
-        max_tokens: 600,
-        temperature: 0,
       });
-      const raw = response.choices[0]?.message?.content ?? '{}';
+
+      const raw = response.content[0]?.type === 'text' ? response.content[0].text : '{}';
       const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
       extractedData = mapExtracted(JSON.parse(cleaned));
     }
@@ -101,7 +125,7 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
       },
     });
 
-    console.log(`[ingest] Caso ${importedCaseId} procesado. Confianza: ${extractedData.confidence}`);
+    console.log(`[ingest] Caso ${importedCaseId} procesado con Claude. Confianza: ${extractedData.confidence}`);
 
   } catch (err) {
     console.error(`[ingest] Error procesando caso ${importedCaseId}:`, err);
@@ -112,15 +136,15 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
   }
 }
 
-// ─── Mapea la respuesta cruda de la IA a ExtractedCaseData ───────────────────
+// ─── Mapea la respuesta de Claude a ExtractedCaseData ────────────────────────
 function mapExtracted(raw: Record<string, unknown>): ExtractedCaseData {
   return {
-    description:   raw.description as string | undefined,
-    location:      raw.location as ExtractedCaseData['location'] | undefined,
+    description:   raw.description  as string | undefined,
+    location:      raw.location     as ExtractedCaseData['location'] | undefined,
     seenAt:        raw.seenAt ? new Date(raw.seenAt as string) : undefined,
     photos:        [],
-    contactInfo:   raw.contactInfo as string | undefined,
-    reward:        raw.reward as number | undefined,
+    contactInfo:   raw.contactInfo  as string | undefined,
+    reward:        raw.reward       as number | undefined,
     dogAttributes: raw.dogAttributes as ExtractedCaseData['dogAttributes'] | undefined,
     confidence:    Number(raw.confidence ?? 0),
   };
