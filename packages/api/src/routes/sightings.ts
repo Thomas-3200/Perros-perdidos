@@ -8,7 +8,7 @@ import { z } from 'zod';
 import prisma from '@perros/db';
 import { requireAuth }    from '../lib/auth.js';
 import { uploadFile }     from '../lib/upload.js';
-import { enqueueMatching } from '../lib/queue.js';
+import { processSighting } from '@perros/ai';
 
 const CreateSightingSchema = z.object({
   locationLat:     z.coerce.number(),
@@ -66,8 +66,12 @@ export async function sightingsRoutes(app: FastifyInstance) {
       },
     });
 
-    // Encolar job de matching (siempre — el engine básico funciona sin fotos)
-    await enqueueMatching(sighting.id);
+    // Procesar matching en background (sin Redis — directo en el proceso)
+    setImmediate(() => {
+      processSighting(sighting.id).catch((err) => {
+        console.error('[sightings] Error en matching:', err);
+      });
+    });
 
     return reply.code(201).send({ success: true, data: sighting });
   });

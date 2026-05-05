@@ -9,7 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import prisma from '@perros/db';
 import { requireAuth }        from '../lib/auth.js';
-import { enqueueNotification } from '../lib/queue.js';
+import { enqueueNotification } from '../lib/queue.js'; // fire-and-forget — no bloquea
 import { CONFIDENCE_THRESHOLDS } from '@perros/shared';
 
 export async function matchesRoutes(app: FastifyInstance) {
@@ -121,15 +121,15 @@ export async function matchesRoutes(app: FastifyInstance) {
       data: { status: newStatus, reviewedById: sub, reviewedAt: new Date() },
     });
 
-    // Si aprobado → notificar al dueño
+    // Si aprobado → notificar al dueño (fire-and-forget, no bloquea la respuesta)
     if (decision === 'approve') {
-      await enqueueNotification({
+      enqueueNotification({
         userId: match.lostCase.ownerId,
         type: 'match_medium',
         title: '🐾 Posible avistamiento de tu perro',
         body: `Un moderador verificó un posible avistamiento. Score: ${Math.round(match.totalScore * 100)}%`,
         data: { matchId: match.id, caseId: match.lostCaseId },
-      });
+      }).catch((err) => console.warn('[matches] Error al notificar:', err));
     }
 
     return { success: true, data: updated };
