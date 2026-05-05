@@ -7,9 +7,10 @@ import Image from 'next/image';
 import Link from 'next/link';
 import {
   MapPin, Clock, Phone, ChevronLeft, AlertCircle,
-  CheckCircle, ShieldCheck, MessageCircle, PartyPopper,
+  CheckCircle, ShieldCheck, MessageCircle, PartyPopper, Heart,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { getUser } from '@/lib/auth';
 
 interface Match {
   id: string;
@@ -51,6 +52,7 @@ interface CaseDetail {
     photos: string[];
   };
   owner: {
+    id: string;
     name: string;
     avatarUrl?: string;
   };
@@ -222,6 +224,18 @@ function CaseDetail() {
           <MapPin className="w-4 h-4" />
           Vi a este perro — reportar avistamiento
         </Link>
+
+        {/* Botón ¡Lo encontré! — solo visible para el dueño del caso */}
+        {c.status === 'active' && getUser()?.id === c.owner.id && (
+          <Link
+            href={`/casos/${c.id}/encontre`}
+            className="flex items-center justify-center gap-2 w-full py-4 px-5 rounded-2xl
+                       bg-hope-500 text-white font-bold text-base hover:bg-hope-600 transition-colors"
+          >
+            <Heart className="w-5 h-5 fill-current" />
+            ¡Lo encontré! Cerrar caso
+          </Link>
+        )}
 
         {/* Matches */}
         <div>

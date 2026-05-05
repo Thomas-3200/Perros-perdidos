@@ -171,7 +171,7 @@ export async function casesRoutes(app: FastifyInstance) {
       where: { id },
       include: {
         dog: true,
-        owner: { select: { name: true, avatarUrl: true } },
+        owner: { select: { id: true, name: true, avatarUrl: true } },
         matches: {
           where: {
             status:          { in: ['pending', 'confirmed'] },
