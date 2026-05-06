@@ -98,7 +98,7 @@ export const api = {
       method:  'POST',
       headers: { ...getAuthHeader() },
       body:    formData,
-    }, 60_000), // 60s: Render wake-up + Cloudinary upload
+    }, 90_000), // 90s: Render cold-start (~60s) + Cloudinary upload (~15s)
   },
 
   // ─── Matches ─────────────────────────────────────────────────────────────────

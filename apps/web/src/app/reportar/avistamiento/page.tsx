@@ -81,11 +81,12 @@ export default function ReportarAvistamientoPage() {
   const [desc,       setDesc]       = useState('');
   const [timeKey,    setTimeKey]    = useState<TimeKey>('now');
   const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 16));
-  const [loading,    setLoading]    = useState(false);
-  const [geoLoading, setGeoLoading] = useState(false);
-  const [error,      setError]      = useState('');
-  const [showAuth,   setShowAuth]   = useState(false);
-  const [done,       setDone]       = useState(false);
+  const [loading,      setLoading]      = useState(false);
+  const [loadingHint,  setLoadingHint]  = useState('');
+  const [geoLoading,   setGeoLoading]   = useState(false);
+  const [error,        setError]        = useState('');
+  const [showAuth,     setShowAuth]     = useState(false);
+  const [done,         setDone]         = useState(false);
   const [locationConfirmed, setLocationConfirmed] = useState(false);
 
   /* ── Manejo del botón back del navegador / móvil ─────────────────────── */
@@ -141,7 +142,15 @@ export default function ReportarAvistamientoPage() {
 
   async function doSubmit() {
     setLoading(true);
+    setLoadingHint('');
     setError('');
+
+    // Mensaje progresivo: si tarda más de 8s, avisar que el servidor se está despertando
+    const hintTimer = setTimeout(
+      () => setLoadingHint('El servidor se está despertando… aguardá unos segundos más 🐾'),
+      8_000,
+    );
+
     try {
       const seenAtISO = timeKeyToISO(timeKey, customDate);
 
@@ -161,9 +170,12 @@ export default function ReportarAvistamientoPage() {
       await api.sightings.create(fd);
       setDone(true);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al enviar el avistamiento');
+      const msg = e instanceof Error ? e.message : 'Error al enviar el avistamiento';
+      setError(msg);
     } finally {
+      clearTimeout(hintTimer);
       setLoading(false);
+      setLoadingHint('');
     }
   }
 
@@ -444,17 +456,34 @@ export default function ReportarAvistamientoPage() {
               {photo && <p className="text-gray-600">📸 Foto adjunta</p>}
             </div>
 
+            {/* Hint de carga progresivo */}
+            {loadingHint && (
+              <div className="bg-brand-50 border border-brand-100 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-brand-700">
+                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                {loadingHint}
+              </div>
+            )}
+
             {error && (
-              <div className="bg-red-50 text-red-600 rounded-xl p-3 text-sm">{error}</div>
+              <div className="bg-red-50 text-red-700 rounded-xl p-4 text-sm space-y-2">
+                <p className="font-semibold">No se pudo enviar</p>
+                <p>{error}</p>
+                <button
+                  onClick={handleSubmit}
+                  className="text-red-600 underline text-xs font-medium"
+                >
+                  Reintentar
+                </button>
+              </div>
             )}
 
             <button
               onClick={handleSubmit}
               disabled={loading}
-              className="btn-primary w-full flex items-center justify-center gap-2 py-4 text-base"
+              className="btn-primary w-full flex items-center justify-center gap-2 py-4 text-base disabled:opacity-60"
             >
               {loading
-                ? <><Loader2 className="w-5 h-5 animate-spin" /> Enviando...</>
+                ? <><Loader2 className="w-5 h-5 animate-spin" /> Enviando…</>
                 : <><Check className="w-5 h-5" /> Enviar avistamiento</>
               }
             </button>
@@ -462,7 +491,7 @@ export default function ReportarAvistamientoPage() {
             <button
               onClick={() => setStep(1)}
               disabled={loading}
-              className="btn-secondary w-full text-sm"
+              className="btn-secondary w-full text-sm disabled:opacity-40"
             >
               ← Volver y editar
             </button>
