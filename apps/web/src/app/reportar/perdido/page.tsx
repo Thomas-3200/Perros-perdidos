@@ -53,7 +53,8 @@ const MAX_PHOTOS = 3;
 const PHOTO_LABELS = ['Frente', 'Lado', 'Otra'];
 
 // ── Componente selector de 3 fotos ────────────────────────────────────────────
-// Usa 3 inputs separados (uno por slot) para evitar race conditions con estado async
+// Cada slot tiene 2 inputs: uno con capture="environment" (cámara) y otro sin (galería).
+// Al tocar un slot vacío se muestra una action sheet para elegir origen.
 function PhotoSlots({
   photos,
   onChange,
@@ -61,11 +62,12 @@ function PhotoSlots({
   photos: File[];
   onChange: (photos: File[]) => void;
 }) {
-  const refs = [
-    useRef<HTMLInputElement>(null),
-    useRef<HTMLInputElement>(null),
-    useRef<HTMLInputElement>(null),
-  ];
+  // 3 refs para la cámara + 3 refs para la galería
+  const cameraRefs  = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
+  const galleryRefs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
+
+  // Slot activo para mostrar la action sheet (null = cerrada)
+  const [actionSlot, setActionSlot] = useState<number | null>(null);
 
   function handleFile(slot: number, e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -74,12 +76,24 @@ function PhotoSlots({
     const next = [...photos];
     next[slot] = file;
     onChange(next);
+    setActionSlot(null);
   }
 
   function remove(i: number) {
     const next = [...photos];
     next.splice(i, 1);
     onChange(next);
+  }
+
+  function openCamera(slot: number) {
+    setActionSlot(null);
+    // pequeño delay para que el estado se cierre antes de abrir el input nativo
+    setTimeout(() => cameraRefs[slot].current?.click(), 50);
+  }
+
+  function openGallery(slot: number) {
+    setActionSlot(null);
+    setTimeout(() => galleryRefs[slot].current?.click(), 50);
   }
 
   return (
@@ -90,9 +104,19 @@ function PhotoSlots({
           const url  = file ? URL.createObjectURL(file) : null;
           return (
             <div key={i} className="aspect-square relative">
-              {/* Input oculto individual por slot */}
+
+              {/* Input cámara (capture="environment") */}
               <input
-                ref={refs[i]}
+                ref={cameraRefs[i]}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="sr-only"
+                onChange={e => handleFile(i, e)}
+              />
+              {/* Input galería (sin capture) */}
+              <input
+                ref={galleryRefs[i]}
                 type="file"
                 accept="image/*"
                 className="sr-only"
@@ -107,14 +131,14 @@ function PhotoSlots({
                   <button
                     type="button"
                     onClick={() => remove(i)}
-                    className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center"
+                    className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center z-10"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
-                  {/* Toca para reemplazar */}
+                  {/* Toca para reemplazar → abre action sheet */}
                   <button
                     type="button"
-                    onClick={() => refs[i].current?.click()}
+                    onClick={() => setActionSlot(i)}
                     className="absolute inset-0 w-full h-full opacity-0"
                     aria-label={`Reemplazar foto ${PHOTO_LABELS[i]}`}
                   />
@@ -126,7 +150,7 @@ function PhotoSlots({
               ) : (
                 <button
                   type="button"
-                  onClick={() => refs[i].current?.click()}
+                  onClick={() => setActionSlot(i)}
                   className="w-full h-full rounded-2xl border-2 border-dashed border-gray-300
                              hover:border-brand-400 hover:bg-brand-50 transition-colors
                              flex flex-col items-center justify-center gap-1 active:scale-95"
@@ -143,6 +167,49 @@ function PhotoSlots({
       <p className="text-xs text-gray-400 text-center">
         Tocá cada recuadro para agregar una foto · Máximo {MAX_PHOTOS} fotos
       </p>
+
+      {/* ── Action sheet: elegir cámara o galería ───────────────────────── */}
+      {actionSlot !== null && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 flex items-end"
+          onClick={() => setActionSlot(null)}
+        >
+          <div
+            className="w-full bg-white rounded-t-3xl p-5 space-y-3 pb-8"
+            onClick={e => e.stopPropagation()}
+          >
+            <p className="text-center text-sm font-semibold text-gray-500 mb-1">
+              Foto — {PHOTO_LABELS[actionSlot]}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => openCamera(actionSlot)}
+              className="w-full flex items-center gap-3 py-4 px-4 rounded-2xl bg-brand-50 hover:bg-brand-100 transition-colors text-brand-700 font-semibold"
+            >
+              <Camera className="w-5 h-5" />
+              Sacar foto ahora
+            </button>
+
+            <button
+              type="button"
+              onClick={() => openGallery(actionSlot)}
+              className="w-full flex items-center gap-3 py-4 px-4 rounded-2xl bg-gray-50 hover:bg-gray-100 transition-colors text-gray-700 font-semibold"
+            >
+              <ImageIcon className="w-5 h-5" />
+              Elegir de la galería
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActionSlot(null)}
+              className="w-full py-3 text-sm text-gray-400 font-medium"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
