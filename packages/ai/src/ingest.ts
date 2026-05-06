@@ -119,7 +119,10 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
       extractedData = mapExtracted(JSON.parse(cleaned));
     }
 
-    const isUsable = extractedData.confidence > 0.3;
+    // Para screenshots/fotos bajamos el umbral: el usuario lo subió intencionalmente
+    const isScreenshot = imported.sourceType === 'screenshot' || imported.sourceType === 'photo';
+    const threshold    = isScreenshot ? 0.1 : 0.3;
+    const isUsable     = extractedData.confidence > threshold;
 
     await prisma.importedSocialCase.update({
       where: { id: importedCaseId },
@@ -129,38 +132,38 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
       },
     });
 
-    // ── Auto-crear avistamiento si hay suficiente info ────────────────────────
+    // ── Auto-crear avistamiento SIEMPRE que haya info útil ───────────────────
+    // Antes se bloqueaba si no había ciudad/coords — ahora siempre se crea
     if (isUsable) {
-      const loc = extractedData.location;
+      const loc       = extractedData.location;
       const hasCoords = loc && loc.lat !== 0 && loc.lng !== 0;
 
-      // Fotos: si el caso era screenshot/photo usamos la URL ya subida a Cloudinary
-      const photos = (imported.sourceType === 'screenshot' || imported.sourceType === 'photo')
-        ? [imported.rawInput]
-        : [];
+      // Fotos: screenshots/photos ya están en Cloudinary
+      const photos = isScreenshot ? [imported.rawInput] : [];
 
-      if (hasCoords || loc?.city) {
-        // Coordenadas: usar las de la IA o fallback al centro de Argentina
-        const lat = hasCoords ? loc!.lat : -38.4161;
-        const lng = hasCoords ? loc!.lng : -63.6167;
+      // Coordenadas: usar las de la IA, o fallback a centro de Argentina si no hay
+      const lat = hasCoords ? loc!.lat : -38.4161;
+      const lng = hasCoords ? loc!.lng : -63.6167;
 
-        const sighting = await prisma.sighting.create({
-          data: {
-            reporterId:      imported.submittedById,
-            locationLat:     lat,
-            locationLng:     lng,
-            locationAddress: loc?.address,
-            locationCity:    loc?.city,
-            seenAt:          extractedData.seenAt ?? imported.createdAt,
-            photos,
-            description:     extractedData.description,
-            source:          'social_import',
-            importedCaseId:  imported.id,
-          },
-        });
+      // Ciudad: usar la extraída o marcar como "Sin ubicación"
+      const city = loc?.city ?? (hasCoords ? undefined : 'Sin ubicación especificada');
 
-        console.log(`[ingest] Avistamiento creado automáticamente: ${sighting.id}`);
-      }
+      const sighting = await prisma.sighting.create({
+        data: {
+          reporterId:      imported.submittedById,
+          locationLat:     lat,
+          locationLng:     lng,
+          locationAddress: loc?.address,
+          locationCity:    city,
+          seenAt:          imported.createdAt, // siempre usar fecha de hoy, no lo que diga el post
+          photos,
+          description:     extractedData.description,
+          source:          'social_import',
+          importedCaseId:  imported.id,
+        },
+      });
+
+      console.log(`[ingest] Avistamiento creado: ${sighting.id} (confianza: ${extractedData.confidence}, ciudad: ${city ?? 'sin ciudad'})`);
     }
 
     console.log(`[ingest] Caso ${importedCaseId} procesado con Claude. Confianza: ${extractedData.confidence}`);
