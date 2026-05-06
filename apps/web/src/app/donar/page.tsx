@@ -1,27 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { Heart, Server, Cpu, Image as ImageIcon, ChevronLeft, ExternalLink } from 'lucide-react';
+import { ChevronLeft, ExternalLink } from 'lucide-react';
 
 // Configurar estos links en Vercel → Environment Variables
 // MP: ir a mercadopago.com.ar → Tu negocio → Cobros → Crear link de pago
 const MP_URL    = process.env.NEXT_PUBLIC_MP_DONATION_URL ?? '';
 const KOFI_URL  = process.env.NEXT_PUBLIC_KOFI_URL        ?? '';
 const PAYPAL_URL = process.env.NEXT_PUBLIC_PAYPAL_URL     ?? '';
-
-const AMOUNTS = [
-  { label: '$500',    sub: 'Café ☕',          ars: 500  },
-  { label: '$1.000',  sub: 'Almuerzo 🥗',      ars: 1000 },
-  { label: '$2.000',  sub: 'Mes de ayuda 🐾',  ars: 2000 },
-  { label: '$5.000',  sub: 'Héroe de la causa 🦸', ars: 5000 },
-];
-
-const COSTS = [
-  { icon: Server,     label: 'Servidor API (Render)',    detail: '~$7 USD/mes' },
-  { icon: ImageIcon,  label: 'Almacenamiento (Cloudinary)', detail: 'Free + overage' },
-  { icon: Cpu,        label: 'IA — Claude + OpenAI',     detail: '~$10–30 USD/mes según uso' },
-  { icon: Server,     label: 'Base de datos (Supabase)', detail: 'Free tier' },
-];
 
 export default function DonarPage() {
   const donationUrl = MP_URL || KOFI_URL || PAYPAL_URL;
@@ -61,29 +47,14 @@ export default function DonarPage() {
           ))}
         </div>
 
-        {/* ── Montos sugeridos ─────────────────────────────────────────────── */}
+        {/* ── Donar con Mercado Pago ────────────────────────────────────────── */}
         {MP_URL && (
           <section className="space-y-3">
-            <h2 className="font-bold text-gray-900">Elegí un monto</h2>
-            <div className="grid grid-cols-2 gap-3">
-              {AMOUNTS.map(({ label, sub, ars }) => (
-                <a
-                  key={ars}
-                  href={MP_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="card flex flex-col items-center py-5 gap-1 hover:border-hope-300
-                             hover:shadow-md transition-all cursor-pointer border-2 border-transparent
-                             hover:bg-hope-50 group"
-                >
-                  <span className="text-2xl font-bold text-gray-900 group-hover:text-hope-600 transition-colors">
-                    {label}
-                  </span>
-                  <span className="text-xs text-gray-500">{sub}</span>
-                </a>
-              ))}
-            </div>
-
+            <h2 className="font-bold text-gray-900">Elegí el monto que quieras</h2>
+            <p className="text-sm text-gray-500 leading-relaxed">
+              Podés donar desde $100 o lo que tengas ganas. Cada peso va directo
+              a mantener la plataforma y la IA funcionando.
+            </p>
             <a
               href={MP_URL}
               target="_blank"
@@ -154,27 +125,6 @@ export default function DonarPage() {
             <p className="text-xs text-gray-400">Estamos configurando los métodos de pago.</p>
           </div>
         )}
-
-        {/* ── A qué va el dinero ────────────────────────────────────────────── */}
-        <section className="space-y-3">
-          <h2 className="font-bold text-gray-900">¿A qué va cada peso?</h2>
-          <div className="space-y-2">
-            {COSTS.map(({ icon: Icon, label, detail }) => (
-              <div key={label} className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-xl">
-                <div className="w-8 h-8 bg-brand-100 rounded-lg flex items-center justify-center shrink-0">
-                  <Icon className="w-4 h-4 text-brand-500" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">{label}</p>
-                </div>
-                <span className="text-xs text-gray-500 shrink-0">{detail}</span>
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-gray-400 text-center leading-relaxed">
-            El 100% de las donaciones va a infraestructura. El equipo es voluntario.
-          </p>
-        </section>
 
         {/* ── Otras formas de ayudar ────────────────────────────────────────── */}
         <section className="bg-brand-50 rounded-2xl p-5 space-y-3 border border-brand-100">
