@@ -9,6 +9,7 @@ import {
   MapPin, Clock, Phone, ChevronLeft, AlertCircle,
   CheckCircle, ShieldCheck, MessageCircle, PartyPopper, Heart,
   Share2, Copy, Check as CheckIcon, Eye, Zap, Users,
+  ThumbsUp, ThumbsDown, ExternalLink,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getUser } from '@/lib/auth';
@@ -20,12 +21,18 @@ interface Match {
   confidenceLevel: 'high' | 'medium' | 'low';
   visualScore: number;
   geoScore: number;
+  attributeScore: number;
   status: string;
   sighting: {
-    photos:      string[];
-    locationLat: number;
-    locationLng: number;
-    seenAt:      string;
+    id:            string;
+    photos:        string[];
+    locationLat:   number;
+    locationLng:   number;
+    locationCity?: string;
+    seenAt:        string;
+    dogStatus:     string;
+    description?:  string;
+    reporter?: { name: string; phone?: string };
   };
 }
 
@@ -325,6 +332,179 @@ function CaseActivity({ c }: { c: CaseDetail }) {
   );
 }
 
+/* ── Etiqueta de estado del perro avistado ──────────────────────────────── */
+const DOG_STATUS_LABEL: Record<string, { label: string; color: string }> = {
+  still_there: { label: '📍 Sigue ahí',  color: 'bg-green-100 text-green-700'   },
+  gone:        { label: '🏃 Ya se fue',  color: 'bg-yellow-100 text-yellow-700' },
+  retained:    { label: '🏠 Lo tienen',  color: 'bg-blue-100 text-blue-700'     },
+  injured:     { label: '🚨 Lastimado',  color: 'bg-red-100 text-red-700'       },
+};
+
+/* ── Sección de coincidencias ───────────────────────────────────────────── */
+function MatchesSection({ c, isOwner }: { c: CaseDetail; isOwner: boolean }) {
+  const [statuses, setStatuses] = useState<Record<string, string>>({});
+
+  async function confirmMatch(matchId: string) {
+    try {
+      await (await import('@/lib/api')).api.matches.confirm(matchId);
+      setStatuses(s => ({ ...s, [matchId]: 'confirmed' }));
+    } catch { /* ignore */ }
+  }
+
+  async function rejectMatch(matchId: string) {
+    try {
+      await (await import('@/lib/api')).api.matches.reject(matchId);
+      setStatuses(s => ({ ...s, [matchId]: 'rejected' }));
+    } catch { /* ignore */ }
+  }
+
+  return (
+    <div>
+      <h2 className="font-semibold text-gray-800 mb-3">
+        {c.matches.length > 0
+          ? `Posibles coincidencias (${c.matches.length})`
+          : 'Sin coincidencias aún'}
+      </h2>
+
+      {c.matches.length === 0 && c.status === 'active' && (
+        <div className="card text-center py-8 space-y-2 bg-gray-50">
+          <Eye className="w-8 h-8 text-gray-300 mx-auto" />
+          <p className="text-gray-500 text-sm">La comunidad sigue buscando.</p>
+          <p className="text-xs text-gray-400">Te avisamos cuando haya novedades.</p>
+        </div>
+      )}
+
+      {c.matches.length > 0 && (
+        <div className="space-y-4">
+          {c.matches.map((m) => {
+            const conf      = CONFIDENCE_LABELS[m.confidenceLevel];
+            const ConfIcon  = conf.icon;
+            const dogSt     = DOG_STATUS_LABEL[m.sighting.dogStatus] ?? null;
+            const currentSt = statuses[m.id] ?? m.status;
+            const isResolved = currentSt === 'confirmed' || currentSt === 'rejected';
+
+            return (
+              <div
+                key={m.id}
+                className={`card border-2 space-y-3 ${
+                  currentSt === 'confirmed' ? 'border-green-300 bg-green-50' :
+                  currentSt === 'rejected'  ? 'border-gray-200 bg-gray-50 opacity-60' :
+                  conf.color.split(' ')[0].replace('text-', 'border-').replace('700','200') + ' ' + conf.color
+                }`}
+              >
+                {/* Cabecera: badge + score */}
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${conf.color}`}>
+                    <ConfIcon className="w-3.5 h-3.5" />
+                    {conf.label} · {Math.round(m.totalScore * 100)}% similitud
+                  </div>
+                  {dogSt && (
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg ${dogSt.color}`}>
+                      {dogSt.label}
+                    </span>
+                  )}
+                </div>
+
+                {/* Foto + datos */}
+                <div className="flex gap-3 items-start">
+                  <div className="relative w-24 h-24 rounded-xl overflow-hidden bg-gray-100 shrink-0">
+                    {m.sighting.photos[0] ? (
+                      <Image src={m.sighting.photos[0]} alt="Avistamiento" fill className="object-cover" />
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-2xl">📍</div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 min-w-0 space-y-1">
+                    {m.sighting.description && (
+                      <p className="text-sm text-gray-700 leading-snug line-clamp-3">
+                        {m.sighting.description}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                      {m.sighting.locationCity && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />{m.sighting.locationCity}
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />Avistado {daysAgo(m.sighting.seenAt)}
+                      </span>
+                    </div>
+                    <div className="flex gap-2 text-[11px] text-gray-400 flex-wrap">
+                      {m.visualScore > 0 && <span>Visual {Math.round(m.visualScore * 100)}%</span>}
+                      <span>Zona {Math.round(m.geoScore * 100)}%</span>
+                      <span>Atributos {Math.round(m.attributeScore * 100)}%</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contacto con el reportero */}
+                {m.sighting.reporter?.name && (
+                  m.sighting.reporter.phone ? (
+                    <a
+                      href={`https://wa.me/${m.sighting.reporter.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                        `Hola ${m.sighting.reporter.name}, vi que reportaste un avistamiento en Perros Perdidos que podría ser mi perro. ¿Podemos hablar?`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl bg-[#25D366] hover:bg-[#20c05c] text-white font-semibold text-sm transition-colors"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      Contactar a {m.sighting.reporter.name.split(' ')[0]}
+                    </a>
+                  ) : (
+                    <div className="flex items-center gap-2 bg-white/60 rounded-xl px-3 py-2 text-sm text-gray-500">
+                      <MessageCircle className="w-4 h-4 shrink-0" />
+                      Reportado por <span className="font-medium text-gray-700 ml-1">{m.sighting.reporter.name}</span>
+                    </div>
+                  )
+                )}
+
+                {/* Botones confirmar/rechazar — solo para el dueño */}
+                {isOwner && !isResolved && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => confirmMatch(m.id)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-green-500 hover:bg-green-600 text-white text-sm font-semibold transition-colors"
+                    >
+                      <ThumbsUp className="w-4 h-4" /> ¡Es mi perro!
+                    </button>
+                    <button
+                      onClick={() => rejectMatch(m.id)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-semibold transition-colors"
+                    >
+                      <ThumbsDown className="w-4 h-4" /> No es él
+                    </button>
+                  </div>
+                )}
+
+                {/* Estado resuelto */}
+                {currentSt === 'confirmed' && (
+                  <div className="flex items-center gap-2 text-green-700 text-sm font-semibold">
+                    <CheckCircle className="w-4 h-4" /> ¡Confirmaste que es tu perro! Si lo encontraste, cerrá el caso.
+                  </div>
+                )}
+                {currentSt === 'rejected' && (
+                  <p className="text-gray-400 text-xs">Descartaste este avistamiento.</p>
+                )}
+
+                {/* Ver avistamiento completo */}
+                <Link
+                  href="/avistamientos"
+                  className="flex items-center gap-1.5 text-xs text-brand-500 hover:underline font-medium"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Ver todos los avistamientos
+                </Link>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Detalle del caso ───────────────────────────────────────────────────── */
 function CaseDetail() {
   const { id }         = useParams<{ id: string }>();
@@ -492,60 +672,7 @@ function CaseDetail() {
         )}
 
         {/* Matches */}
-        <div>
-          <h2 className="font-semibold text-gray-800 mb-3">
-            {c.matches.length > 0
-              ? `Posibles coincidencias (${c.matches.length})`
-              : 'Sin coincidencias aún'}
-          </h2>
-
-          {c.matches.length === 0 && c.status === 'active' && (
-            <div className="card text-center py-8 space-y-2 bg-gray-50">
-              <Eye className="w-8 h-8 text-gray-300 mx-auto" />
-              <p className="text-gray-500 text-sm">La comunidad sigue buscando.</p>
-              <p className="text-xs text-gray-400">Te avisamos cuando haya novedades.</p>
-            </div>
-          )}
-
-          {c.matches.length > 0 && (
-            <div className="space-y-3">
-              {c.matches.map((m) => {
-                const conf     = CONFIDENCE_LABELS[m.confidenceLevel];
-                const ConfIcon = conf.icon;
-                return (
-                  <div key={m.id} className={`card border ${conf.color}`}>
-                    <div className="flex items-start gap-3">
-                      <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-gray-100 shrink-0">
-                        {m.sighting.photos[0] ? (
-                          <Image src={m.sighting.photos[0]} alt="Avistamiento" fill className="object-cover" />
-                        ) : (
-                          <div className="flex items-center justify-center h-full text-2xl">📍</div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${conf.color} mb-2`}>
-                          <ConfIcon className="w-3 h-3" />
-                          {conf.label}
-                        </div>
-                        <div className="text-sm font-bold text-gray-800">
-                          {Math.round(m.totalScore * 100)}% similitud
-                        </div>
-                        <div className="flex gap-3 mt-1 text-xs text-gray-500">
-                          <span>Visual: {Math.round(m.visualScore * 100)}%</span>
-                          <span>Geo: {Math.round(m.geoScore * 100)}%</span>
-                        </div>
-                        <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
-                          <Clock className="w-3 h-3" />
-                          Avistado {daysAgo(m.sighting.seenAt)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        <MatchesSection c={c} isOwner={getUser()?.id === c.owner.id} />
 
         {/* CTA comunitario */}
         <div className="bg-gradient-to-br from-brand-50 to-orange-50 rounded-2xl p-5 border border-brand-100 text-center space-y-3">

@@ -10,15 +10,16 @@ import multipart  from '@fastify/multipart';
 import fs         from 'node:fs';
 import path       from 'node:path';
 
-import { casesRoutes }     from './routes/cases.js';
-import { sightingsRoutes } from './routes/sightings.js';
-import { matchesRoutes }   from './routes/matches.js';
-import { usersRoutes }     from './routes/users.js';
-import { ingestRoutes }    from './routes/ingest.js';
-import { supportRoutes }   from './routes/support.js';
-import { reunionRoutes }   from './routes/reunion.js';
-import { statsRoutes }     from './routes/stats.js';
-import { adminRoutes }     from './routes/admin.js';
+import { casesRoutes }         from './routes/cases.js';
+import { sightingsRoutes }     from './routes/sightings.js';
+import { matchesRoutes }       from './routes/matches.js';
+import { usersRoutes }         from './routes/users.js';
+import { ingestRoutes }        from './routes/ingest.js';
+import { supportRoutes }       from './routes/support.js';
+import { reunionRoutes }       from './routes/reunion.js';
+import { statsRoutes }         from './routes/stats.js';
+import { adminRoutes }         from './routes/admin.js';
+import { notificationsRoutes } from './routes/notifications.js';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -91,7 +92,8 @@ async function bootstrap() {
   await app.register(supportRoutes,   { prefix: '/api/v1/support' });
   await app.register(reunionRoutes,   { prefix: '/api/v1/reunion' });
   await app.register(statsRoutes,     { prefix: '/api/v1/stats' });
-  await app.register(adminRoutes,     { prefix: '/api/v1/admin' });
+  await app.register(adminRoutes,         { prefix: '/api/v1/admin' });
+  await app.register(notificationsRoutes, { prefix: '/api/v1/notifications' });
 
   // ── Arrancar servidor ──────────────────────────────────────────────────────
   await app.listen({ port: PORT, host: HOST });

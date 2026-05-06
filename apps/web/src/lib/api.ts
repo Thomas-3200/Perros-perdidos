@@ -168,6 +168,13 @@ export const api = {
     stats:          ()         => request('/api/v1/admin/stats'),
   },
 
+  // ─── Notificaciones ──────────────────────────────────────────────────────────
+  notifications: {
+    mine:    () => request('/api/v1/notifications/mine'),
+    markRead: (id: string) => request(`/api/v1/notifications/${id}/read`, { method: 'PATCH' }),
+    markAll:  () => request('/api/v1/notifications/read-all', { method: 'PATCH' }),
+  },
+
   // ─── Estadísticas ────────────────────────────────────────────────────────────
   stats: {
     get: () => request<{ success: boolean; data: {

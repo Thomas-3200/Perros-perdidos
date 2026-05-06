@@ -149,7 +149,7 @@ async function basicProcessSighting(sightingId: string): Promise<MatchResult[]> 
 
     if (confidence === 'low') continue;
 
-    await prisma.match.upsert({
+    const savedMatch = await prisma.match.upsert({
       where:  { lostCaseId_sightingId: { lostCaseId: lostCase.id, sightingId } },
       update: { geoScore: geo, timeScore: time, attributeScore: attrScore, totalScore: total, confidenceLevel: confidence },
       create: {
@@ -164,6 +164,25 @@ async function basicProcessSighting(sightingId: string): Promise<MatchResult[]> 
         status:         'pending',
       },
     });
+
+    // Notificar al dueño si es coincidencia HIGH (una sola vez mientras no la lea)
+    if (confidence === 'high') {
+      const alreadyNotified = await prisma.notification.findFirst({
+        where: { userId: lostCase.ownerId, lostCaseId: lostCase.id, type: 'match_high', read: false },
+      });
+      if (!alreadyNotified) {
+        await prisma.notification.create({
+          data: {
+            userId:     lostCase.ownerId,
+            lostCaseId: lostCase.id,
+            type:       'match_high' as never,
+            title:      `🐾 Posible avistamiento de ${lostCase.dog.name}`,
+            body:       `Encontramos un avistamiento que coincide en un ${Math.round(total * 100)}% con la información que cargaste. ¡Entrá a chequearlo!`,
+            data:       { matchId: savedMatch.id, caseId: lostCase.id },
+          },
+        }).catch(err => console.warn('[matching] Error al crear notificación:', err));
+      }
+    }
 
     results.push({
       lostCaseId:      lostCase.id,
@@ -249,7 +268,7 @@ async function aiProcessSighting(sightingId: string): Promise<MatchResult[]> {
 
     if (confidence === 'low') continue;
 
-    await prisma.match.upsert({
+    const savedMatch = await prisma.match.upsert({
       where:  { lostCaseId_sightingId: { lostCaseId: lostCase.id, sightingId } },
       update: { visualScore: visual, geoScore: geo, timeScore: time, attributeScore: attrScore, totalScore: total, confidenceLevel: confidence },
       create: {
@@ -264,6 +283,24 @@ async function aiProcessSighting(sightingId: string): Promise<MatchResult[]> {
         status:          'pending',
       },
     });
+
+    if (confidence === 'high') {
+      const alreadyNotified = await prisma.notification.findFirst({
+        where: { userId: lostCase.ownerId, lostCaseId: lostCase.id, type: 'match_high', read: false },
+      });
+      if (!alreadyNotified) {
+        await prisma.notification.create({
+          data: {
+            userId:     lostCase.ownerId,
+            lostCaseId: lostCase.id,
+            type:       'match_high' as never,
+            title:      `🐾 Posible avistamiento de ${lostCase.dog.name}`,
+            body:       `IA detectó un avistamiento que coincide en un ${Math.round(total * 100)}% con la información que cargaste. ¡Entrá a chequearlo!`,
+            data:       { matchId: savedMatch.id, caseId: lostCase.id },
+          },
+        }).catch(err => console.warn('[matching:ai] Error al crear notificación:', err));
+      }
+    }
 
     results.push({
       lostCaseId:      lostCase.id,

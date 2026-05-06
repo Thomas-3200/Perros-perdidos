@@ -475,6 +475,26 @@ export default function PerfilPage() {
         </div>
       </div>
 
+      {/* ── Alertas de coincidencias ─────────────────────────────────────── */}
+      {cases.filter(c => c.status === 'active' && c._count.matches > 0).map(c => (
+        <Link
+          key={c.id}
+          href={`/casos/${c.id}`}
+          className="flex items-start gap-3 bg-green-50 border-2 border-green-200 rounded-2xl px-4 py-3 hover:bg-green-100 transition-colors"
+        >
+          <div className="text-2xl shrink-0">🐾</div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-green-800 text-sm leading-tight">
+              Encontramos {c._count.matches} posible{c._count.matches > 1 ? 's' : ''} coincidencia{c._count.matches > 1 ? 's' : ''} para {c.dog.name}
+            </p>
+            <p className="text-green-700 text-xs mt-0.5 leading-tight">
+              Este perro coincide con la información que cargaste. ¡Entrá a chequearlo!
+            </p>
+          </div>
+          <ChevronRight className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />
+        </Link>
+      ))}
+
       {/* Tabs */}
       <div className="flex border-b border-gray-200">
         {([
