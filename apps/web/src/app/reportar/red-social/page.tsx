@@ -19,6 +19,7 @@ export default function ReportarRedSocialPage() {
   const [image,     setImage]     = useState<File | null>(null);
   const [loading,   setLoading]   = useState(false);
   const [result,    setResult]    = useState<ResultState>(null);
+  const [debugInfo, setDebugInfo] = useState('');
   const [error,     setError]     = useState('');
   const [showAuth,  setShowAuth]  = useState(false);
 
@@ -26,8 +27,9 @@ export default function ReportarRedSocialPage() {
     if (!isLoggedIn()) { setShowAuth(true); return; }
     setLoading(true);
     setError('');
+    setDebugInfo('');
     try {
-      let res: { aiProcessed?: boolean; data?: { status?: string } } = {};
+      let res: { aiProcessed?: boolean; aiError?: string; message?: string; data?: { status?: string } } = {};
 
       if (mode === 'image' && image) {
         const fd = new FormData();
@@ -37,6 +39,9 @@ export default function ReportarRedSocialPage() {
       } else if (mode === 'text') {
         res = await api.ingest.submitText(text) as typeof res;
       }
+
+      // Guardar info de debug para mostrarla si fue rechazado
+      if (res?.aiError) setDebugInfo(res.aiError);
 
       // Determinar el resultado real según la respuesta de la API
       const status = (res?.data as { status?: string })?.status ?? 'pending';
@@ -111,6 +116,18 @@ export default function ReportarRedSocialPage() {
                 <li>🐶 Asegurate de que el post hable de un perro perdido o encontrado</li>
               </ul>
             </div>
+          )}
+
+          {/* Error técnico para debug */}
+          {isRejected && debugInfo && (
+            <details className="text-left">
+              <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">
+                Ver detalle del error técnico
+              </summary>
+              <p className="mt-1 text-xs text-red-500 bg-red-50 rounded-lg p-2 font-mono break-all">
+                {debugInfo}
+              </p>
+            </details>
           )}
 
           {/* Botones */}
