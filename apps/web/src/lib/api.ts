@@ -90,6 +90,7 @@ export const api = {
     mine:       () => request('/api/v1/cases/mine'),
     get:        (id: string)   => request(`/api/v1/cases/${id}`),
     create:     (data: unknown) => request('/api/v1/cases', { method: 'POST', body: JSON.stringify(data) }),
+    update:     (id: string, data: unknown) => request(`/api/v1/cases/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     setStatus:  (id: string, status: string) =>
       request(`/api/v1/cases/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
     delete:     (id: string) => request(`/api/v1/cases/${id}`, { method: 'DELETE' }),

@@ -8,7 +8,7 @@ import useSWR, { mutate } from 'swr';
 import {
   User, MapPin, Clock, ShieldCheck, AlertCircle,
   PlusCircle, LogOut, ChevronRight, Trash2, Eye, Share2,
-  Camera, Pencil, X, Loader2, Check,
+  Camera, Pencil, X, Loader2, Check, Heart, Bell,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getUser, clearSession, isLoggedIn, saveSession } from '@/lib/auth';
@@ -407,6 +407,9 @@ export default function PerfilPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Mi perfil</h1>
+        <Link href="/notificaciones" className="relative p-2 rounded-xl hover:bg-gray-100 transition-colors text-gray-400 hover:text-brand-500">
+          <Bell className="w-5 h-5" />
+        </Link>
       </div>
 
       {/* Tarjeta de usuario */}
@@ -576,6 +579,20 @@ export default function PerfilPage() {
                     title="Ver caso">
                     <Eye className="w-4 h-4" />
                   </Link>
+                  {c.status === 'active' && (
+                    <Link href={`/casos/${c.id}/editar`}
+                      className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-300 hover:text-blue-500 transition-colors"
+                      title="Editar caso">
+                      <Pencil className="w-4 h-4" />
+                    </Link>
+                  )}
+                  {c.status === 'active' && (
+                    <Link href={`/casos/${c.id}/encontre`}
+                      className="p-1.5 rounded-lg hover:bg-green-50 text-gray-300 hover:text-green-500 transition-colors"
+                      title="¡Lo encontré!">
+                      <Heart className="w-4 h-4" />
+                    </Link>
+                  )}
                   <button
                     onClick={() => deleteCase(c.id, c.dog.name)}
                     className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"

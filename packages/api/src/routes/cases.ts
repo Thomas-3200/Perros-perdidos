@@ -208,6 +208,80 @@ export async function casesRoutes(app: FastifyInstance) {
     return { success: true, data: lostCase };
   });
 
+  // ── PATCH /:id — Editar datos del caso y el perro ──────────────────────────
+  app.patch('/:id', { preHandler: requireAuth }, async (req, reply) => {
+    const { sub } = req.user as { sub: string };
+    const { id }  = req.params as { id: string };
+
+    const body = z.object({
+      // Datos del perro
+      dogName:        z.string().min(1).optional(),
+      dogBreed:       z.string().optional(),
+      dogColor:       z.array(z.string()).optional(),
+      dogSize:        z.enum(['small', 'medium', 'large', 'extra_large']).optional(),
+      dogSex:         z.enum(['male', 'female', 'unknown']).optional(),
+      dogAge:         z.number().optional(),
+      dogDescription: z.string().optional(),
+      // Datos del caso
+      lastSeenAddress: z.string().optional(),
+      lastSeenCity:    z.string().optional(),
+      lastSeenCountry: z.string().optional(),
+      lastSeenAt:      z.string().datetime().optional(),
+      reward:          z.number().optional().nullable(),
+      behaviorNotes:   z.string().optional(),
+      contactMethod:   z.enum(['phone', 'whatsapp', 'email', 'in_app']).optional(),
+      contactValue:    z.string().optional(),
+    }).parse(req.body);
+
+    // Verificar que el caso pertenece al usuario
+    const lostCase = await prisma.lostCase.findFirst({
+      where: { id, ownerId: sub },
+      include: { dog: true },
+    });
+    if (!lostCase) {
+      return reply.code(404).send({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Caso no encontrado' },
+      });
+    }
+
+    // Actualizar perro si hay cambios
+    const dogUpdates = {
+      ...(body.dogName        !== undefined && { name:        body.dogName }),
+      ...(body.dogBreed       !== undefined && { breed:       body.dogBreed }),
+      ...(body.dogColor       !== undefined && { color:       body.dogColor }),
+      ...(body.dogSize        !== undefined && { size:        body.dogSize }),
+      ...(body.dogSex         !== undefined && { sex:         body.dogSex }),
+      ...(body.dogAge         !== undefined && { age:         body.dogAge }),
+      ...(body.dogDescription !== undefined && { description: body.dogDescription }),
+    };
+    if (Object.keys(dogUpdates).length > 0) {
+      await prisma.dog.update({ where: { id: lostCase.dogId }, data: dogUpdates });
+    }
+
+    // Actualizar caso si hay cambios
+    const caseUpdates = {
+      ...(body.lastSeenAddress !== undefined && { lastSeenAddress: body.lastSeenAddress }),
+      ...(body.lastSeenCity    !== undefined && { lastSeenCity:    body.lastSeenCity }),
+      ...(body.lastSeenCountry !== undefined && { lastSeenCountry: body.lastSeenCountry }),
+      ...(body.lastSeenAt      !== undefined && { lastSeenAt:      new Date(body.lastSeenAt) }),
+      ...(body.reward          !== undefined && { reward:          body.reward }),
+      ...(body.behaviorNotes   !== undefined && { behaviorNotes:   body.behaviorNotes }),
+      ...(body.contactMethod   !== undefined && { contactMethod:   body.contactMethod }),
+      ...(body.contactValue    !== undefined && { contactValue:    body.contactValue }),
+    };
+    const updated = await prisma.lostCase.update({
+      where: { id },
+      data:  caseUpdates,
+      include: {
+        dog: true,
+        owner: { select: { id: true, name: true, avatarUrl: true } },
+      },
+    });
+
+    return { success: true, data: updated };
+  });
+
   // ── DELETE /:id — Eliminar caso (solo el dueño) ──────────────────────────
   app.delete('/:id', { preHandler: requireAuth }, async (req, reply) => {
     const { sub } = req.user as { sub: string };

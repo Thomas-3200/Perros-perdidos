@@ -9,7 +9,7 @@ import {
   MapPin, Clock, Phone, ChevronLeft, AlertCircle,
   CheckCircle, ShieldCheck, MessageCircle, PartyPopper, Heart,
   Share2, Copy, Check as CheckIcon, Eye, Zap, Users,
-  ThumbsUp, ThumbsDown, ExternalLink,
+  ThumbsUp, ThumbsDown, ExternalLink, Pencil,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getUser } from '@/lib/auth';
@@ -569,6 +569,13 @@ function CaseDetail() {
           className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-full p-2 shadow">
           <ChevronLeft className="w-5 h-5 text-gray-700" />
         </Link>
+        {/* Botón editar — solo dueño, solo caso activo */}
+        {c.status === 'active' && getUser()?.id === c.owner.id && (
+          <Link href={`/casos/${c.id}/editar`}
+            className="absolute top-4 right-16 bg-white/90 backdrop-blur-sm rounded-full p-2 shadow">
+            <Pencil className="w-4 h-4 text-gray-700" />
+          </Link>
+        )}
         {/* Status badge en foto */}
         <div className="absolute top-4 right-4">
           <CaseStatusBadge c={c} />
