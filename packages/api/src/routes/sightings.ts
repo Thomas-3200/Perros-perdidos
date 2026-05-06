@@ -93,7 +93,7 @@ export async function sightingsRoutes(app: FastifyInstance) {
       prisma.sighting.findMany({
         where,
         include: {
-          reporter: { select: { name: true, avatarUrl: true } },
+          reporter: { select: { name: true, avatarUrl: true, phone: true } },
           _count:   { select: { matches: true } },
         },
         orderBy: { createdAt: 'desc' },

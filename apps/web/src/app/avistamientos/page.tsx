@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import {
   MapPin, Clock, Eye, ChevronLeft, Camera, X,
-  ChevronRight, RefreshCw, AlertCircle, Sparkles,
+  ChevronRight, RefreshCw, AlertCircle, Sparkles, MessageCircle,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -23,6 +23,7 @@ interface SightingItem {
   reporter?: {
     name: string;
     avatarUrl?: string;
+    phone?: string;
   };
 }
 
@@ -155,6 +156,24 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
               </div>
             )}
           </div>
+
+          {/* Botón de contacto con el reporter */}
+          {s.reporter?.phone ? (
+            <a
+              href={`https://wa.me/${s.reporter.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${s.reporter.name}, vi tu avistamiento en Perros Perdidos y me gustaría consultarte sobre el perro que reportaste.`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-2xl bg-[#25D366] hover:bg-[#20c05c] text-white font-semibold text-sm transition-colors"
+            >
+              <MessageCircle className="w-4 h-4" />
+              Enviar mensaje a {s.reporter.name.split(' ')[0]}
+            </a>
+          ) : s.reporter?.name ? (
+            <div className="flex items-center gap-2 bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-500">
+              <MessageCircle className="w-4 h-4 shrink-0" />
+              <span>Reportado por <strong>{s.reporter.name}</strong> · Sin teléfono disponible</span>
+            </div>
+          ) : null}
 
           <div className="space-y-2">
             <Link
