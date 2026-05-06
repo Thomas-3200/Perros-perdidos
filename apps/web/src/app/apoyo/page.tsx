@@ -9,7 +9,7 @@
  * 2. Si tiene casos activos propios → muestra lista para elegir
  * 3. Si no tiene casos → sugiere reportar uno primero
  */
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Suspense } from 'react';
 import { Heart, Send, ChevronLeft, AlertCircle, Clock, Dog } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
@@ -38,7 +38,16 @@ async function fetchMyCases(): Promise<LostCase[]> {
   }
 }
 
+// Wrapper con Suspense requerido por Next.js cuando se usa useSearchParams()
 export default function ApoyoPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center"><Heart className="w-10 h-10 text-brand-400 animate-pulse" /></div>}>
+      <ApoyoContent />
+    </Suspense>
+  );
+}
+
+function ApoyoContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const urlCaseId    = searchParams.get('caseId') ?? '';
