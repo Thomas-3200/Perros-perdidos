@@ -6,6 +6,7 @@ import {
   Camera, MapPin, Phone, ChevronRight, ChevronLeft,
   Check, Loader2, LocateFixed,
 } from 'lucide-react';
+import { PhotoPicker } from '@/components/ui/PhotoPicker';
 import { api } from '@/lib/api';
 import { isLoggedIn } from '@/lib/auth';
 import { AuthModal } from '@/components/auth/AuthModal';
@@ -186,26 +187,17 @@ export default function ReportarPerdidoPage() {
               </p>
             </div>
 
-            <label className="block w-full cursor-pointer">
-              <div className={clsx(
-                'border-2 border-dashed rounded-2xl p-8 text-center transition-colors',
-                form.photos.length > 0
-                  ? 'border-brand-400 bg-brand-50'
-                  : 'border-gray-300 hover:border-brand-400',
-              )}>
-                <Camera className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-                <p className="font-semibold text-gray-600">
-                  {form.photos.length > 0
-                    ? `${form.photos.length} foto${form.photos.length > 1 ? 's' : ''} seleccionada${form.photos.length > 1 ? 's' : ''}`
-                    : 'Tocá aquí para seleccionar fotos'}
-                </p>
-                <p className="text-xs text-gray-400 mt-1">JPG, PNG, HEIC — hasta 20 MB por foto</p>
-              </div>
-              <input
-                type="file" accept="image/*" multiple className="sr-only"
-                onChange={e => { set('photos', Array.from(e.target.files ?? [])); setError(''); }}
-              />
-            </label>
+            {form.photos.length > 0 && (
+              <p className="text-sm text-brand-600 font-semibold text-center">
+                {form.photos.length} foto{form.photos.length > 1 ? 's' : ''} seleccionada{form.photos.length > 1 ? 's' : ''} ✓
+              </p>
+            )}
+
+            <PhotoPicker
+              multiple
+              onFile={f => { set('photos', [f]); setError(''); }}
+              onFiles={files => { set('photos', files); setError(''); }}
+            />
 
             {form.photos.map((f, i) => (
               <div key={i} className="flex items-center gap-3 bg-white rounded-xl p-3 border border-gray-100">

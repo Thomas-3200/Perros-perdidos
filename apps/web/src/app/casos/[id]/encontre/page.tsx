@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Heart, Camera, ChevronLeft, Loader2, Check } from 'lucide-react';
 import { api } from '@/lib/api';
+import { PhotoPicker } from '@/components/ui/PhotoPicker';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -114,32 +115,16 @@ export default function EncontreePage() {
           <label className="text-sm font-semibold text-gray-700">
             Foto del reencuentro <span className="font-normal text-gray-400">(opcional)</span>
           </label>
-          <label className="block cursor-pointer">
-            <div className="border-2 border-dashed border-gray-300 hover:border-hope-400 rounded-2xl p-6 text-center transition-colors">
-              {photo ? (
-                <div className="space-y-2">
-                  <img
-                    src={URL.createObjectURL(photo)}
-                    alt="Reunión"
-                    className="max-h-52 object-contain rounded-xl mx-auto"
-                  />
-                  <p className="text-xs text-gray-400">Toca para cambiar la foto</p>
-                </div>
-              ) : (
-                <>
-                  <Camera className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500 font-medium">Subí una foto del reencuentro</p>
-                  <p className="text-xs text-gray-400 mt-1">Inspira a otros dueños que todavía buscan</p>
-                </>
-              )}
+          {photo && (
+            <div className="rounded-2xl overflow-hidden border border-gray-200">
+              <img
+                src={URL.createObjectURL(photo)}
+                alt="Reunión"
+                className="max-h-52 object-contain w-full bg-gray-50"
+              />
             </div>
-            <input
-              type="file"
-              accept="image/*"
-              className="sr-only"
-              onChange={e => setPhoto(e.target.files?.[0] ?? null)}
-            />
-          </label>
+          )}
+          <PhotoPicker onFile={f => setPhoto(f)} />
         </div>
 
         {/* Historia (opcional) */}

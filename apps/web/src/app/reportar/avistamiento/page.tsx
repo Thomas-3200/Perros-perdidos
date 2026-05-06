@@ -8,6 +8,7 @@ import {
 import { api } from '@/lib/api';
 import { isLoggedIn } from '@/lib/auth';
 import { AuthModal } from '@/components/auth/AuthModal';
+import { PhotoPicker } from '@/components/ui/PhotoPicker';
 
 const DOG_STATUS_OPTIONS = [
   { value: 'still_there', label: '📍 Sigue ahí',   desc: 'El perro todavía está en ese lugar' },
@@ -148,29 +149,19 @@ export default function ReportarAvistamientoPage() {
               </p>
             </div>
 
-            <label className="block cursor-pointer">
-              <div className="border-2 border-dashed border-gray-300 hover:border-brand-400 rounded-2xl p-10 text-center transition-colors">
-                {photo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={URL.createObjectURL(photo)}
-                    alt="preview"
-                    className="w-full max-h-64 object-contain rounded-xl mx-auto"
-                  />
-                ) : (
-                  <>
-                    <Camera className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                    <p className="font-semibold text-gray-500">Toca para tomar o elegir una foto</p>
-                  </>
-                )}
+            {/* Preview si ya hay foto */}
+            {photo && (
+              <div className="rounded-2xl overflow-hidden border border-gray-200">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={URL.createObjectURL(photo)}
+                  alt="preview"
+                  className="w-full max-h-64 object-contain bg-gray-50"
+                />
               </div>
-              <input
-                type="file"
-                accept="image/*"
-                className="sr-only"
-                onChange={e => setPhoto(e.target.files?.[0] ?? null)}
-              />
-            </label>
+            )}
+
+            <PhotoPicker onFile={f => setPhoto(f)} />
 
             <button onClick={() => setStep(1)} className="btn-primary w-full">
               {photo ? 'Siguiente →' : 'Continuar sin foto →'}
