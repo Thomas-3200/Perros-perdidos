@@ -86,8 +86,10 @@ function RecentSightings() {
           )}
           {/* Overlay */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-          {/* Status dot */}
-          <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full border-2 border-white ${STATUS_DOT[s.dogStatus] ?? 'bg-gray-400'}`} />
+          {/* Status dot — solo si tiene estado conocido */}
+          {STATUS_DOT[s.dogStatus] && s.dogStatus !== 'unknown' && (
+            <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full border-2 border-white ${STATUS_DOT[s.dogStatus]}`} />
+          )}
           {/* Time */}
           <span className="absolute bottom-1.5 left-1.5 right-1.5 text-white text-[10px] font-semibold leading-tight">
             {s.locationCity ? `${s.locationCity} · ` : ''}{timeAgo(s.seenAt)}

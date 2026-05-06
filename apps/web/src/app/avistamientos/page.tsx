@@ -120,9 +120,11 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
         <div className="p-5 space-y-4 overflow-y-auto">
           {/* Estado + matches */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-sm font-semibold px-3 py-1 rounded-xl ${st.color}`}>
-              {st.label}
-            </span>
+            {s.dogStatus && STATUS[s.dogStatus] && (
+              <span className={`text-sm font-semibold px-3 py-1 rounded-xl ${st.color}`}>
+                {st.label}
+              </span>
+            )}
             {(s.matchCount ?? 0) > 0 && (
               <span className="text-xs bg-brand-50 text-brand-600 px-2 py-1 rounded-lg font-semibold">
                 🔍 {s.matchCount} caso{s.matchCount !== 1 ? 's' : ''} coincidente{s.matchCount !== 1 ? 's' : ''}
@@ -365,9 +367,11 @@ export default function AvistamientosPage() {
                   <div className="flex-1 min-w-0">
                     {/* Badges superiores */}
                     <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg ${st.color}`}>
-                        {st.label}
-                      </span>
+                      {s.dogStatus && STATUS[s.dogStatus] && (
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg ${st.color}`}>
+                          {st.label}
+                        </span>
+                      )}
                       {s.source === 'social_import' && (
                         <span className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-lg font-medium flex items-center gap-1">
                           <Sparkles className="w-2.5 h-2.5" /> Red social
