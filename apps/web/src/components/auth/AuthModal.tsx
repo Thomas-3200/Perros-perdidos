@@ -37,11 +37,13 @@ export function AuthModal({ onSuccess, onClose }: Props) {
   const [showPassword,  setShowPassword]  = useState(false);
   const [loading,       setLoading]       = useState(false);
   const [error,         setError]         = useState('');
+  const [oauthHint,     setOauthHint]     = useState<'google' | 'facebook' | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setOauthHint(null);
 
     try {
       let res: { data: { token: string; user: StoredUser } };
@@ -66,6 +68,12 @@ export function AuthModal({ onSuccess, onClose }: Props) {
       if (mode === 'login' && msg.includes('no encontrado')) {
         setMode('register');
         setError('No tenés cuenta todavía. Completá tu nombre y contraseña para registrarte.');
+      } else if (msg.includes('Google')) {
+        setOauthHint('google');
+        setError(msg);
+      } else if (msg.includes('Facebook')) {
+        setOauthHint('facebook');
+        setError(msg);
       } else {
         setError(msg);
       }
@@ -77,6 +85,7 @@ export function AuthModal({ onSuccess, onClose }: Props) {
   function switchMode(m: Mode) {
     setMode(m);
     setError('');
+    setOauthHint(null);
     setPassword('');
   }
 
@@ -198,8 +207,51 @@ export function AuthModal({ onSuccess, onClose }: Props) {
             />
           )}
 
-          {error && (
+          {error && !oauthHint && (
             <p className="text-sm text-amber-700 bg-amber-50 rounded-xl px-3 py-2">{error}</p>
+          )}
+
+          {/* ── Error USE_OAUTH: mostrar el botón correcto ───────────────── */}
+          {oauthHint === 'google' && (
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-3">
+              <p className="text-sm text-blue-800 font-medium">
+                Esta cuenta fue creada con Google.
+              </p>
+              <p className="text-xs text-blue-600">
+                Usá el botón de abajo para ingresar de forma segura.
+              </p>
+              <a
+                href={`${API_URL}/api/v1/users/auth/google`}
+                className="flex items-center justify-center gap-3 w-full py-2.5 px-4 rounded-xl
+                           border-2 border-blue-300 bg-white text-gray-700 font-semibold text-sm
+                           hover:bg-gray-50 transition-colors"
+              >
+                <GoogleIcon />
+                Continuar con Google
+              </a>
+            </div>
+          )}
+
+          {oauthHint === 'facebook' && (
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-3">
+              <p className="text-sm text-blue-800 font-medium">
+                Esta cuenta fue creada con Facebook.
+              </p>
+              <p className="text-xs text-blue-600">
+                Usá el botón de abajo para ingresar de forma segura.
+              </p>
+              <a
+                href={`${API_URL}/api/v1/users/auth/facebook`}
+                className="flex items-center justify-center gap-3 w-full py-2.5 px-4 rounded-xl
+                           bg-[#1877F2] text-white font-semibold text-sm hover:bg-[#166FE5]
+                           transition-colors"
+              >
+                <svg className="w-5 h-5 fill-white" viewBox="0 0 24 24">
+                  <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073c0 6.026 4.388 11.02 10.125 11.927v-8.437H7.078v-3.49h3.047V9.43c0-3.007 1.79-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.49h-2.796v8.437C19.612 23.093 24 18.099 24 12.073z"/>
+                </svg>
+                Continuar con Facebook
+              </a>
+            </div>
           )}
 
           <button
