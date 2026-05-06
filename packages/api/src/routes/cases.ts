@@ -81,6 +81,32 @@ export async function casesRoutes(app: FastifyInstance) {
       return lostCase;
     });
 
+    // Notificar a helpers con alertCity que coincide con la ciudad del caso
+    const city = body.lastSeenCity;
+    if (city) {
+      const helpers = await prisma.user.findMany({
+        where: {
+          helperMode: true,
+          alertCity: { equals: city, mode: 'insensitive' },
+          id: { not: sub }, // no notificar al propio dueño
+        },
+        select: { id: true },
+      });
+
+      if (helpers.length > 0) {
+        await prisma.notification.createMany({
+          data: helpers.map(h => ({
+            userId:  h.id,
+            type:    'helper_alert' as const,
+            title:   '🐾 Nuevo caso en tu zona',
+            body:    `Reportaron un perro perdido en ${city}. ¿Podés ayudar?`,
+            data:    { caseId: result.id },
+          })),
+          skipDuplicates: true,
+        });
+      }
+    }
+
     return reply.code(201).send({ success: true, data: result });
   });
 

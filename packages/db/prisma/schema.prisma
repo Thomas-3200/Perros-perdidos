@@ -135,6 +135,10 @@ model User {
   locationCity     String?
   locationCountry  String?
 
+  // Modo búsqueda / alertas de zona
+  helperMode       Boolean  @default(false)
+  alertCity        String?
+
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

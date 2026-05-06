@@ -152,6 +152,7 @@ export async function usersRoutes(app: FastifyInstance) {
         id: true, email: true, name: true, phone: true,
         avatarUrl: true, role: true, reputationScore: true,
         locationCity: true, locationCountry: true,
+        helperMode: true, alertCity: true,
         createdAt: true,
         // No exponer passwordHash, googleId, facebookId
       },
@@ -169,6 +170,8 @@ export async function usersRoutes(app: FastifyInstance) {
       locationLng:     z.number().optional(),
       locationCity:    z.string().optional(),
       locationCountry: z.string().optional(),
+      helperMode:      z.boolean().optional(),
+      alertCity:       z.string().optional(),
     }).parse(req.body);
 
     const user = await prisma.user.update({
@@ -177,7 +180,9 @@ export async function usersRoutes(app: FastifyInstance) {
       select: {
         id: true, email: true, name: true, phone: true,
         avatarUrl: true, role: true, reputationScore: true,
-        locationCity: true, locationCountry: true, createdAt: true,
+        locationCity: true, locationCountry: true,
+        helperMode: true, alertCity: true,
+        createdAt: true,
       },
     });
     return { success: true, data: user };
