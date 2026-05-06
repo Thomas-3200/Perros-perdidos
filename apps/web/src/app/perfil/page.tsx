@@ -379,12 +379,6 @@ export default function PerfilPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Mi perfil</h1>
-        <button
-          onClick={() => { clearSession(); router.push('/'); }}
-          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-500 transition-colors"
-        >
-          <LogOut className="w-4 h-4" /> Salir
-        </button>
       </div>
 
       {/* Tarjeta de usuario */}
@@ -418,14 +412,23 @@ export default function PerfilPage() {
           </div>
         </div>
 
-        {/* Editar */}
-        <button
-          onClick={() => setEditingProfile(true)}
-          className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-brand-500 transition-colors shrink-0"
-          title="Editar perfil"
-        >
-          <Pencil className="w-4 h-4" />
-        </button>
+        {/* Acciones */}
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => setEditingProfile(true)}
+            className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-brand-500 transition-colors"
+            title="Editar perfil"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => { clearSession(); router.push('/'); }}
+            className="p-2 rounded-xl hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+            title="Cerrar sesión"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Resumen */}
