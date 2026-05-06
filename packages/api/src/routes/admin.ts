@@ -63,12 +63,9 @@ export async function adminRoutes(app: FastifyInstance) {
     return { success: true, data: matches, meta: { total, page, limit } };
   });
 
-  // ── DELETE /sightings — Borra avistamientos por IDs (secret) ────────────────
-  app.delete('/sightings', async (req, reply) => {
-    const { secret, ids } = req.body as { secret?: string; ids?: string[] };
-    if (secret !== (process.env.SEED_SECRET ?? 'perros-seed-2026')) {
-      return reply.code(403).send({ success: false, error: { code: 'FORBIDDEN' } });
-    }
+  // ── DELETE /sightings — Borra avistamientos por IDs (solo admin/moderator) ──
+  app.delete('/sightings', { preHandler: requireModerator }, async (req, reply) => {
+    const { ids } = req.body as { ids?: string[] };
     if (!ids?.length) return reply.code(400).send({ success: false, error: { code: 'NO_IDS' } });
     // Borrar matches asociados primero para evitar FK violation
     await prisma.match.deleteMany({ where: { sightingId: { in: ids } } });
@@ -76,12 +73,8 @@ export async function adminRoutes(app: FastifyInstance) {
     return { success: true, deleted: count };
   });
 
-  // ── POST /seed-demo — Crea casos de éxito demo (one-time, secret) ──────────
-  app.post('/seed-demo', async (req, reply) => {
-    const { secret } = req.body as { secret?: string };
-    if (secret !== (process.env.SEED_SECRET ?? 'perros-seed-2026')) {
-      return reply.code(403).send({ success: false, error: { code: 'FORBIDDEN', message: 'Secret inválido' } });
-    }
+  // ── POST /seed-demo — Crea casos de éxito demo (solo admin/moderator) ───────
+  app.post('/seed-demo', { preHandler: requireModerator }, async (req, reply) => {
 
     const valentina = await prisma.user.upsert({
       where:  { email: 'valentina.demo@perros.app' },

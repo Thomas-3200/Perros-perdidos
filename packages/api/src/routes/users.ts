@@ -16,6 +16,17 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? '';
 const API_BASE_URL    = process.env.API_BASE_URL ?? 'http://localhost:3001';
 const WEB_URL         = process.env.CORS_ORIGIN  ?? 'http://localhost:3000';
 
+// ── Store de códigos OAuth de un solo uso ────────────────────────────────────
+// Evita exponer el JWT en la URL. Cada code tiene un TTL de 60 segundos y se
+// elimina inmediatamente tras ser canjeado (one-time use).
+const pendingOAuthCodes = new Map<string, { token: string; expiresAt: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [code, val] of pendingOAuthCodes) {
+    if (val.expiresAt < now) pendingOAuthCodes.delete(code);
+  }
+}, 60_000);
+
 // ── Helpers de contraseña (Node.js crypto nativo, sin dependencias) ─────────────
 function hashPassword(password: string): string {
   const salt = randomBytes(16).toString('hex');
@@ -95,23 +106,38 @@ export async function usersRoutes(app: FastifyInstance) {
       });
     }
 
-    // Si el usuario tiene contraseña, verificarla
-    if (user.passwordHash) {
-      if (!password) {
+    // Si la cuenta es exclusivamente OAuth (sin contraseña), bloquear login por email
+    if (!user.passwordHash) {
+      const provider = user.googleId ? 'Google' : user.facebookId ? 'Facebook' : null;
+      if (provider) {
         return reply.code(401).send({
           success: false,
-          error: { code: 'PASSWORD_REQUIRED', message: 'Esta cuenta requiere contraseña' },
+          error: {
+            code:    'USE_OAUTH',
+            message: `Esta cuenta fue creada con ${provider}. Iniciá sesión con ${provider}.`,
+          },
         });
       }
-      if (!verifyPassword(password, user.passwordHash)) {
-        return reply.code(401).send({
-          success: false,
-          error: { code: 'INVALID_PASSWORD', message: 'Contraseña incorrecta' },
-        });
-      }
+      // Cuenta sin hash ni OAuth — no debería existir, pero si ocurre, bloqueamos
+      return reply.code(401).send({
+        success: false,
+        error: { code: 'PASSWORD_REQUIRED', message: 'Esta cuenta no tiene contraseña configurada' },
+      });
     }
-    // Si no tiene contraseña (cuenta OAuth), login sin contraseña está permitido
-    // (comportamiento legacy — cuentas creadas antes del sistema de contraseñas)
+
+    // Verificar contraseña
+    if (!password) {
+      return reply.code(401).send({
+        success: false,
+        error: { code: 'PASSWORD_REQUIRED', message: 'Esta cuenta requiere contraseña' },
+      });
+    }
+    if (!verifyPassword(password, user.passwordHash)) {
+      return reply.code(401).send({
+        success: false,
+        error: { code: 'INVALID_PASSWORD', message: 'Contraseña incorrecta' },
+      });
+    }
 
     const token = app.jwt.sign({ sub: user.id, role: user.role });
     return { success: true, data: { user, token } };
@@ -216,6 +242,32 @@ export async function usersRoutes(app: FastifyInstance) {
     return { success: true, message: 'Contraseña actualizada correctamente' };
   });
 
+  // ── GET /auth/exchange — Canjear código OAuth de un solo uso por JWT ────────
+  // El JWT nunca viaja en la URL; el frontend lo canjea con este endpoint.
+  app.get('/auth/exchange', async (req, reply) => {
+    const { code } = req.query as { code?: string };
+
+    if (!code) {
+      return reply.code(400).send({
+        success: false,
+        error: { code: 'CODE_REQUIRED', message: 'Código requerido' },
+      });
+    }
+
+    const entry = pendingOAuthCodes.get(code);
+    if (!entry || entry.expiresAt < Date.now()) {
+      pendingOAuthCodes.delete(code);
+      return reply.code(401).send({
+        success: false,
+        error: { code: 'CODE_EXPIRED', message: 'Código inválido o expirado' },
+      });
+    }
+
+    // One-time use: borrar inmediatamente
+    pendingOAuthCodes.delete(code);
+    return { success: true, data: { token: entry.token } };
+  });
+
   // ── GET /auth/google — Iniciar OAuth con Google ──────────────────────────────
   app.get('/auth/google', async (_req, reply) => {
     if (!GOOGLE_CLIENT_ID) {
@@ -229,9 +281,9 @@ export async function usersRoutes(app: FastifyInstance) {
 
   // ── GET /auth/google/callback — Callback OAuth Google ───────────────────────
   app.get('/auth/google/callback', async (req, reply) => {
-    const { code, error } = req.query as { code?: string; error?: string };
+    const { code: googleCode, error } = req.query as { code?: string; error?: string };
 
-    if (error || !code) {
+    if (error || !googleCode) {
       return reply.redirect(`${WEB_URL}/auth/callback?error=google_denied`);
     }
 
@@ -243,7 +295,7 @@ export async function usersRoutes(app: FastifyInstance) {
         method:  'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
-          code,
+          code:          googleCode,
           client_id:     GOOGLE_CLIENT_ID,
           client_secret: GOOGLE_CLIENT_SECRET,
           redirect_uri:  redirectUri,
@@ -297,7 +349,9 @@ export async function usersRoutes(app: FastifyInstance) {
       }
 
       const token = app.jwt.sign({ sub: user.id, role: user.role });
-      return reply.redirect(`${WEB_URL}/auth/callback?token=${token}`);
+      const code  = randomBytes(32).toString('hex');
+      pendingOAuthCodes.set(code, { token, expiresAt: Date.now() + 60_000 });
+      return reply.redirect(`${WEB_URL}/auth/callback?code=${code}`);
 
     } catch (err) {
       console.error('[auth/google] Error:', err);
@@ -318,16 +372,16 @@ export async function usersRoutes(app: FastifyInstance) {
 
   // ── GET /auth/facebook/callback — Callback OAuth Facebook ───────────────────
   app.get('/auth/facebook/callback', async (req, reply) => {
-    const { code, error } = req.query as { code?: string; error?: string };
+    const { code: fbCode, error } = req.query as { code?: string; error?: string };
 
-    if (error || !code) {
+    if (error || !fbCode) {
       return reply.redirect(`${WEB_URL}/auth/callback?error=facebook_denied`);
     }
 
     try {
       const redirectUri = encodeURIComponent(`${API_BASE_URL}/api/v1/users/auth/facebook/callback`);
       const tokenRes = await fetch(
-        `https://graph.facebook.com/v20.0/oauth/access_token?client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&redirect_uri=${redirectUri}&code=${code}`
+        `https://graph.facebook.com/v20.0/oauth/access_token?client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&redirect_uri=${redirectUri}&code=${fbCode}`
       );
       const tokenData = await tokenRes.json() as { access_token?: string; error?: { message: string } };
       if (!tokenData.access_token) throw new Error(tokenData.error?.message ?? 'Sin access_token');
@@ -375,7 +429,9 @@ export async function usersRoutes(app: FastifyInstance) {
       }
 
       const token = app.jwt.sign({ sub: user.id, role: user.role });
-      return reply.redirect(`${WEB_URL}/auth/callback?token=${token}`);
+      const code  = randomBytes(32).toString('hex');
+      pendingOAuthCodes.set(code, { token, expiresAt: Date.now() + 60_000 });
+      return reply.redirect(`${WEB_URL}/auth/callback?code=${code}`);
 
     } catch (err) {
       console.error('[auth/facebook] Error:', err);

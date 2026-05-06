@@ -12,35 +12,58 @@ function CallbackHandler() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    const token = searchParams.get('token');
-    const error = searchParams.get('error');
+    const code       = searchParams.get('code');
+    const tokenParam = searchParams.get('token'); // backward compat (no debería llegar)
+    const error      = searchParams.get('error');
 
-    if (!token) {
+    if (!code && !tokenParam) {
       router.replace(`/?error=${error ?? 'unknown'}`);
       return;
     }
 
-    // Guardar token inmediatamente y luego buscar perfil completo
-    localStorage.setItem('pp_token', token);
+    async function handleCallback() {
+      let token = tokenParam;
 
-    fetch(`${API_URL}/api/v1/users/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.json())
-      .then((res: { data: { id: string; name: string; email: string; role: string } }) => {
-        if (res?.data) {
-          saveSession(token, res.data);
+      // Canjear el código de un solo uso por el JWT real
+      if (code) {
+        try {
+          const res  = await fetch(`${API_URL}/api/v1/users/auth/exchange?code=${code}`);
+          const json = await res.json() as { success: boolean; data?: { token: string } };
+          if (!json?.data?.token) {
+            router.replace('/?error=exchange_failed');
+            return;
+          }
+          token = json.data.token;
+        } catch {
+          router.replace('/?error=exchange_failed');
+          return;
         }
-        const returnTo = sessionStorage.getItem('pp_return_to') ?? '/perfil';
-        sessionStorage.removeItem('pp_return_to');
-        router.replace(returnTo);
-      })
-      .catch(() => {
-        // Si falla el fetch, redirigir igual
-        const returnTo = sessionStorage.getItem('pp_return_to') ?? '/perfil';
-        sessionStorage.removeItem('pp_return_to');
-        router.replace(returnTo);
-      });
+      }
+
+      if (!token) {
+        router.replace('/?error=no_token');
+        return;
+      }
+
+      // Guardar token y buscar perfil completo
+      localStorage.setItem('pp_token', token);
+
+      try {
+        const r   = await fetch(`${API_URL}/api/v1/users/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const res = await r.json() as { data?: { id: string; name: string; email: string; role: string } };
+        if (res?.data) saveSession(token, res.data);
+      } catch {
+        // Si falla el fetch de perfil, redirigir igual (el token ya está guardado)
+      }
+
+      const returnTo = sessionStorage.getItem('pp_return_to') ?? '/perfil';
+      sessionStorage.removeItem('pp_return_to');
+      router.replace(returnTo);
+    }
+
+    handleCallback();
   }, [router, searchParams]);
 
   return (
