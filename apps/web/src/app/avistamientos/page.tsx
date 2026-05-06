@@ -47,10 +47,86 @@ function timeAgo(dateStr: string): string {
   return `hace ${days} días`;
 }
 
+/* ── Lightbox de imagen a pantalla completa ──────────────────────────────── */
+function Lightbox({ photos, startIdx, onClose }: { photos: string[]; startIdx: number; onClose: () => void }) {
+  const [idx, setIdx] = useState(startIdx);
+
+  useEffect(() => {
+    const fn = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowRight') setIdx(i => (i + 1) % photos.length);
+      if (e.key === 'ArrowLeft')  setIdx(i => (i - 1 + photos.length) % photos.length);
+    };
+    document.addEventListener('keydown', fn);
+    return () => document.removeEventListener('keydown', fn);
+  }, [onClose, photos.length]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center"
+      onClick={onClose}
+    >
+      {/* Imagen */}
+      <div className="relative w-full h-full" onClick={e => e.stopPropagation()}>
+        <Image
+          src={photos[idx]}
+          alt="Foto completa"
+          fill
+          className="object-contain"
+          sizes="100vw"
+        />
+
+        {/* Botón cerrar */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 bg-black/60 text-white rounded-full p-2.5 hover:bg-black/80 transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        {/* Navegación si hay más de 1 foto */}
+        {photos.length > 1 && (
+          <>
+            <button
+              onClick={() => setIdx(i => (i - 1 + photos.length) % photos.length)}
+              className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/60 text-white rounded-full p-3 hover:bg-black/80 transition-colors"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setIdx(i => (i + 1) % photos.length)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/60 text-white rounded-full p-3 hover:bg-black/80 transition-colors"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2">
+              {photos.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setIdx(i)}
+                  className={`w-2 h-2 rounded-full transition-colors ${i === idx ? 'bg-white' : 'bg-white/40'}`}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Contador */}
+        {photos.length > 1 && (
+          <span className="absolute top-4 left-4 bg-black/60 text-white text-xs px-2 py-1 rounded-lg">
+            {idx + 1} / {photos.length}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── Modal de detalle ───────────────────────────────────────────────────── */
 function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void }) {
   const st = STATUS[s.dogStatus] ?? null;
   const [idx, setIdx] = useState(0);
+  const [lightbox, setLightbox] = useState(false);
 
   useEffect(() => {
     const fn = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -67,6 +143,10 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
   const location = [s.locationAddress, s.locationCity].filter(Boolean).join(', ');
 
   return (
+    <>
+    {lightbox && s.photos.length > 0 && (
+      <Lightbox photos={s.photos} startIdx={idx} onClose={() => setLightbox(false)} />
+    )}
     <div
       className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4"
       onClick={onClose}
@@ -79,39 +159,49 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
         <div className="relative w-full h-64 bg-gray-100 flex-shrink-0">
           {s.photos.length > 0 ? (
             <>
+              {/* Área clickeable para abrir lightbox */}
+              <button
+                className="absolute inset-0 z-10 w-full h-full cursor-zoom-in"
+                onClick={() => setLightbox(true)}
+                aria-label="Ver imagen completa"
+              />
               <Image src={s.photos[idx]} alt="Avistamiento" fill className="object-cover" />
               {s.photos.length > 1 && (
                 <>
                   <button
-                    onClick={() => setIdx(i => (i - 1 + s.photos.length) % s.photos.length)}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 text-white rounded-full p-1.5"
+                    onClick={e => { e.stopPropagation(); setIdx(i => (i - 1 + s.photos.length) % s.photos.length); }}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 text-white rounded-full p-1.5 z-20"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => setIdx(i => (i + 1) % s.photos.length)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 text-white rounded-full p-1.5"
+                    onClick={e => { e.stopPropagation(); setIdx(i => (i + 1) % s.photos.length); }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 text-white rounded-full p-1.5 z-20"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>
-                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-20">
                     {s.photos.map((_, i) => (
                       <div key={i} className={`w-1.5 h-1.5 rounded-full ${i === idx ? 'bg-white' : 'bg-white/40'}`} />
                     ))}
                   </div>
                 </>
               )}
+              {/* Hint "toca para ampliar" */}
+              <span className="absolute bottom-2 right-2 z-20 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded-md pointer-events-none">
+                🔍 Ampliar
+              </span>
             </>
           ) : (
             <div className="flex items-center justify-center h-full text-6xl">🐕</div>
           )}
 
-          <button onClick={onClose} className="absolute top-3 right-3 bg-black/40 text-white rounded-full p-1.5">
+          <button onClick={onClose} className="absolute top-3 right-3 bg-black/40 text-white rounded-full p-1.5 z-20">
             <X className="w-4 h-4" />
           </button>
 
           {s.source === 'social_import' && (
-            <span className="absolute top-3 left-3 text-xs bg-purple-600 text-white px-2 py-1 rounded-lg font-medium flex items-center gap-1">
+            <span className="absolute top-3 left-3 text-xs bg-purple-600 text-white px-2 py-1 rounded-lg font-medium flex items-center gap-1 z-20">
               <Sparkles className="w-3 h-3" /> Red social
             </span>
           )}
@@ -195,6 +285,7 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
         </div>
       </div>
     </div>
+    </>
   );
 }
 
