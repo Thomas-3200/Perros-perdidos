@@ -104,9 +104,9 @@ function ApoyoContent() {
       setSessionId(res.data.id);
       setSelectedCase(lostCase);
       setPhase('chat');
-      const daysMissing = Math.floor(
+      const daysMissing = Math.max(0, Math.floor(
         (Date.now() - new Date(lostCase.lastSeenAt).getTime()) / 86_400_000
-      );
+      ));
       const intro = daysMissing === 0
         ? `💙 Hola. Estoy aquí para acompañarte. Cuéntame, ¿cómo te sentís desde que ${lostCase.dog.name} se perdió?`
         : `💙 Hola. Sé que llevan ${daysMissing} día${daysMissing !== 1 ? 's' : ''} buscando a ${lostCase.dog.name}. Eso debe ser muy difícil. Cuéntame, ¿cómo estás?`;
@@ -180,7 +180,9 @@ function ApoyoContent() {
                   ? 'bg-brand-500 text-white rounded-br-sm'
                   : 'bg-white border border-gray-100 text-gray-800 rounded-bl-sm shadow-sm',
               )}>
-                {msg.content}
+                {msg.role === 'assistant'
+                  ? <FormattedMessage text={msg.content} />
+                  : msg.content}
               </div>
             </div>
           ))}
@@ -253,9 +255,9 @@ function ApoyoContent() {
           <div className="space-y-3">
             <p className="text-sm font-medium text-gray-600">Tus casos activos:</p>
             {myCases.map(c => {
-              const daysMissing = Math.floor(
+              const daysMissing = Math.max(0, Math.floor(
                 (Date.now() - new Date(c.lastSeenAt).getTime()) / 86_400_000
-              );
+              ));
               return (
                 <button
                   key={c.id}
@@ -342,4 +344,41 @@ function Disclaimer() {
       </p>
     </div>
   );
+}
+
+/** Renderiza el markdown simple de Claude: **negrita**, listas numeradas y saltos de línea */
+function FormattedMessage({ text }: { text: string }) {
+  const lines = text.split('\n');
+  return (
+    <div className="space-y-1">
+      {lines.map((line, i) => {
+        if (!line.trim()) return <div key={i} className="h-1" />;
+
+        // Línea de lista numerada: "1. texto"
+        const listMatch = line.match(/^(\d+)\.\s+(.+)/);
+        if (listMatch) {
+          return (
+            <div key={i} className="flex gap-2">
+              <span className="font-bold text-brand-600 flex-shrink-0">{listMatch[1]}.</span>
+              <span>{renderInline(listMatch[2])}</span>
+            </div>
+          );
+        }
+
+        // Línea normal con posible negrita inline
+        return <p key={i}>{renderInline(line)}</p>;
+      })}
+    </div>
+  );
+}
+
+/** Convierte **texto** en <strong> dentro de una línea */
+function renderInline(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i}>{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
 }
