@@ -69,17 +69,28 @@ export default function ReportarRedSocialPage() {
             <Check className="w-10 h-10 text-hope-500" />
           </div>
           <h2 className="text-2xl font-bold text-gray-900">¡Gracias por ayudar! 🐾</h2>
-          <p className="text-gray-500">
-            La IA procesará la información en los próximos minutos y la cruzará con los casos activos.
-            Si encuentra una coincidencia, el dueño recibirá una notificación.
+          <p className="text-gray-500 leading-relaxed">
+            La IA está procesando la información. En unos segundos va a aparecer como un nuevo
+            avistamiento en la sección <strong className="text-gray-700">Avistados</strong>.
           </p>
+          <div className="bg-brand-50 rounded-2xl px-4 py-3 text-left border border-brand-100">
+            <p className="text-brand-700 text-xs font-medium">¿Qué pasa después?</p>
+            <ul className="text-brand-600 text-xs mt-1.5 space-y-1">
+              <li>✅ La IA extrae los datos del post automáticamente</li>
+              <li>✅ Se cruza con los casos de perros perdidos activos</li>
+              <li>✅ Si hay coincidencia, el dueño recibe una notificación</li>
+            </ul>
+          </div>
           <div className="space-y-3">
+            <button
+              onClick={() => router.push('/avistamientos')}
+              className="btn-primary w-full"
+            >
+              Ver en Avistados →
+            </button>
             <button onClick={() => router.push('/reportar/red-social')}
               className="btn-secondary w-full">
               Reportar otro caso
-            </button>
-            <button onClick={() => router.push('/')} className="btn-primary w-full">
-              Volver al inicio
             </button>
           </div>
         </div>
