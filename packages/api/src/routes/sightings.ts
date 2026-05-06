@@ -80,23 +80,41 @@ export async function sightingsRoutes(app: FastifyInstance) {
   app.get('/', async (req) => {
     const query = z.object({
       page:  z.coerce.number().default(1),
-      limit: z.coerce.number().default(20),
+      limit: z.coerce.number().default(30),
       city:  z.string().optional(),
+      since: z.string().optional(), // ISO date — filtrar por createdAt >= since
     }).parse(req.query);
 
-    const sightings = await prisma.sighting.findMany({
-      where: query.city
-        ? { locationCity: { contains: query.city, mode: 'insensitive' } }
-        : {},
-      include: {
-        reporter: { select: { name: true, avatarUrl: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      skip:  (query.page - 1) * query.limit,
-      take:  query.limit,
-    });
+    const where: Record<string, unknown> = {};
+    if (query.city)  where.locationCity = { contains: query.city, mode: 'insensitive' };
+    if (query.since) where.createdAt    = { gte: new Date(query.since) };
 
-    return { success: true, data: sightings };
+    const [sightings, total] = await Promise.all([
+      prisma.sighting.findMany({
+        where,
+        include: {
+          reporter: { select: { name: true, avatarUrl: true } },
+          _count:   { select: { matches: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip:  (query.page - 1) * query.limit,
+        take:  query.limit,
+      }),
+      prisma.sighting.count({ where }),
+    ]);
+
+    // Aplanar _count para el cliente
+    const data = sightings.map(s => ({
+      ...s,
+      matchCount: s._count.matches,
+      _count: undefined,
+    }));
+
+    return {
+      success: true,
+      data,
+      meta: { total, page: query.page, limit: query.limit },
+    };
   });
 
   // ── GET /:id — Detalle de avistamiento ────────────────────────────────────

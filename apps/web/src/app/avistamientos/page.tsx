@@ -1,9 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { MapPin, Clock, Eye, ChevronLeft, Camera, X, ChevronRight } from 'lucide-react';
+import {
+  MapPin, Clock, Eye, ChevronLeft, Camera, X,
+  ChevronRight, RefreshCw, AlertCircle, Sparkles,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 
 interface SightingItem {
@@ -11,17 +14,23 @@ interface SightingItem {
   locationCity?:    string;
   locationAddress?: string;
   seenAt:           string;
+  createdAt:        string;
   photos:           string[];
   dogStatus:        string;
   description?:     string;
   source:           string;
+  matchCount?:      number;
+  reporter?: {
+    name: string;
+    avatarUrl?: string;
+  };
 }
 
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+const STATUS: Record<string, { label: string; color: string }> = {
   still_there: { label: '📍 Sigue ahí',    color: 'bg-green-100 text-green-700'   },
-  gone:        { label: '🏃 Se fue',        color: 'bg-yellow-100 text-yellow-700' },
-  retained:    { label: '🏠 Lo tienen',     color: 'bg-blue-100 text-blue-700'     },
-  injured:     { label: '🚨 Lastimado',     color: 'bg-red-100 text-red-700'       },
+  gone:        { label: '🏃 Ya se fue',    color: 'bg-yellow-100 text-yellow-700' },
+  retained:    { label: '🏠 Lo tienen',    color: 'bg-blue-100 text-blue-700'     },
+  injured:     { label: '🚨 Lastimado',    color: 'bg-red-100 text-red-700'       },
   unknown:     { label: '❓ Sin confirmar', color: 'bg-gray-100 text-gray-600'     },
 };
 
@@ -30,25 +39,31 @@ function timeAgo(dateStr: string): string {
   const mins  = Math.floor(diff / 60_000);
   const hours = Math.floor(diff / 3_600_000);
   const days  = Math.floor(diff / 86_400_000);
+  if (mins < 1)   return 'justo ahora';
   if (mins < 60)  return `hace ${mins} min`;
   if (hours < 24) return `hace ${hours}h`;
   if (days === 1) return 'ayer';
   return `hace ${days} días`;
 }
 
-type FilterDays = 1 | 3 | 7;
-
 /* ── Modal de detalle ───────────────────────────────────────────────────── */
 function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void }) {
-  const status = STATUS_LABELS[s.dogStatus] ?? STATUS_LABELS.unknown;
-  const [photoIdx, setPhotoIdx] = useState(0);
+  const st = STATUS[s.dogStatus] ?? STATUS.unknown;
+  const [idx, setIdx] = useState(0);
 
-  // Cerrar con Escape
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    const fn = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', fn);
+    return () => document.removeEventListener('keydown', fn);
   }, [onClose]);
+
+  // Bloquear scroll del body
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
+  const location = [s.locationAddress, s.locationCity].filter(Boolean).join(', ');
 
   return (
     <div
@@ -56,37 +71,31 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
       onClick={onClose}
     >
       <div
-        className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl overflow-hidden"
+        className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl overflow-hidden max-h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        {/* Foto principal */}
-        <div className="relative w-full h-64 bg-gray-100">
+        {/* Foto */}
+        <div className="relative w-full h-64 bg-gray-100 flex-shrink-0">
           {s.photos.length > 0 ? (
             <>
-              <Image
-                src={s.photos[photoIdx]}
-                alt="Avistamiento"
-                fill
-                className="object-cover"
-              />
-              {/* Navegación de fotos */}
+              <Image src={s.photos[idx]} alt="Avistamiento" fill className="object-cover" />
               {s.photos.length > 1 && (
                 <>
                   <button
-                    onClick={() => setPhotoIdx(i => (i - 1 + s.photos.length) % s.photos.length)}
+                    onClick={() => setIdx(i => (i - 1 + s.photos.length) % s.photos.length)}
                     className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 text-white rounded-full p-1.5"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => setPhotoIdx(i => (i + 1) % s.photos.length)}
+                    onClick={() => setIdx(i => (i + 1) % s.photos.length)}
                     className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 text-white rounded-full p-1.5"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>
                   <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
                     {s.photos.map((_, i) => (
-                      <div key={i} className={`w-1.5 h-1.5 rounded-full ${i === photoIdx ? 'bg-white' : 'bg-white/40'}`} />
+                      <div key={i} className={`w-1.5 h-1.5 rounded-full ${i === idx ? 'bg-white' : 'bg-white/40'}`} />
                     ))}
                   </div>
                 </>
@@ -96,106 +105,166 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
             <div className="flex items-center justify-center h-full text-6xl">🐕</div>
           )}
 
-          {/* Botón cerrar */}
-          <button
-            onClick={onClose}
-            className="absolute top-3 right-3 bg-black/40 text-white rounded-full p-1.5"
-          >
+          <button onClick={onClose} className="absolute top-3 right-3 bg-black/40 text-white rounded-full p-1.5">
             <X className="w-4 h-4" />
           </button>
 
-          {/* Badge fuente */}
           {s.source === 'social_import' && (
-            <span className="absolute top-3 left-3 text-xs bg-purple-600 text-white px-2 py-1 rounded-lg font-medium">
-              Red social
+            <span className="absolute top-3 left-3 text-xs bg-purple-600 text-white px-2 py-1 rounded-lg font-medium flex items-center gap-1">
+              <Sparkles className="w-3 h-3" /> Red social
             </span>
           )}
         </div>
 
-        {/* Contenido */}
-        <div className="p-5 space-y-4">
+        {/* Contenido scrolleable */}
+        <div className="p-5 space-y-4 overflow-y-auto">
+          {/* Estado + matches */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-sm font-semibold px-3 py-1 rounded-xl ${status.color}`}>
-              {status.label}
+            <span className={`text-sm font-semibold px-3 py-1 rounded-xl ${st.color}`}>
+              {st.label}
             </span>
+            {(s.matchCount ?? 0) > 0 && (
+              <span className="text-xs bg-brand-50 text-brand-600 px-2 py-1 rounded-lg font-semibold">
+                🔍 {s.matchCount} caso{s.matchCount !== 1 ? 's' : ''} coincidente{s.matchCount !== 1 ? 's' : ''}
+              </span>
+            )}
           </div>
 
+          {/* Descripción */}
           {s.description && (
             <p className="text-sm text-gray-700 leading-relaxed">{s.description}</p>
           )}
 
-          <div className="space-y-2 text-sm text-gray-500">
-            {(s.locationAddress || s.locationCity) && (
-              <div className="flex items-start gap-2">
+          {/* Datos */}
+          <div className="bg-gray-50 rounded-xl p-3 space-y-2 text-sm">
+            {location && (
+              <div className="flex items-start gap-2 text-gray-600">
                 <MapPin className="w-4 h-4 text-brand-500 mt-0.5 shrink-0" />
-                <span>{s.locationAddress ?? s.locationCity}</span>
+                <span>{location}</span>
               </div>
             )}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 text-gray-600">
               <Clock className="w-4 h-4 text-brand-500 shrink-0" />
-              <span>Avistado {timeAgo(s.seenAt)}</span>
+              <span>Visto {timeAgo(s.seenAt)} · Reportado {timeAgo(s.createdAt)}</span>
             </div>
+            {s.reporter?.name && (
+              <div className="flex items-center gap-2 text-gray-500 text-xs">
+                <span>👤 Reportado por {s.reporter.name}</span>
+              </div>
+            )}
           </div>
 
-          <Link
-            href="/reportar/avistamiento"
-            className="btn-primary flex items-center justify-center gap-2 w-full"
-            onClick={onClose}
-          >
-            <Camera className="w-4 h-4" />
-            Reportar otro avistamiento
-          </Link>
+          <div className="space-y-2">
+            <Link
+              href="/reportar/avistamiento"
+              className="btn-primary flex items-center justify-center gap-2 w-full"
+              onClick={onClose}
+            >
+              <Camera className="w-4 h-4" />
+              Reportar otro avistamiento
+            </Link>
+            <Link
+              href="/buscar"
+              className="btn-secondary flex items-center justify-center gap-2 w-full text-sm"
+              onClick={onClose}
+            >
+              Ver casos activos →
+            </Link>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
+/* ── Filtros de tiempo (por cuándo fue REPORTADO, no cuándo se vio) ──────── */
+type FilterKey = 'today' | '3d' | '7d' | 'all';
+const FILTERS: { key: FilterKey; label: string; days: number | null }[] = [
+  { key: 'today', label: 'Hoy',            days: 1    },
+  { key: '3d',    label: 'Últimos 3 días', days: 3    },
+  { key: '7d',    label: 'Últimos 7 días', days: 7    },
+  { key: 'all',   label: 'Todo',           days: null },
+];
+
 /* ── Página principal ───────────────────────────────────────────────────── */
 export default function AvistamientosPage() {
-  const [sightings, setSightings] = useState<SightingItem[]>([]);
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState('');
-  const [days,      setDays]      = useState<FilterDays>(7);
-  const [selected,  setSelected]  = useState<SightingItem | null>(null);
+  const [sightings,  setSightings]  = useState<SightingItem[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState('');
+  const [filter,     setFilter]     = useState<FilterKey>('7d');
+  const [selected,   setSelected]   = useState<SightingItem | null>(null);
+  const [total,      setTotal]      = useState(0);
+  const [page,       setPage]       = useState(1);
+  const LIMIT = 30;
+
+  const load = useCallback(async (f: FilterKey, p: number) => {
+    setLoading(true);
+    setError('');
+    try {
+      const filterDef = FILTERS.find(x => x.key === f)!;
+      const params: Record<string, string | number> = { limit: LIMIT, page: p };
+
+      // Filtrar por createdAt (cuándo fue reportado), no seenAt
+      if (filterDef.days !== null) {
+        const since = new Date(Date.now() - filterDef.days * 86_400_000).toISOString();
+        params.since = since;
+      }
+
+      const res = await api.sightings.list(params) as {
+        data: SightingItem[];
+        meta: { total: number };
+      };
+      if (p === 1) {
+        setSightings(res.data);
+      } else {
+        setSightings(prev => [...prev, ...res.data]);
+      }
+      setTotal(res.meta?.total ?? res.data.length);
+    } catch {
+      setError('No se pudieron cargar los avistamientos.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError('');
-      try {
-        const res = await api.sightings.list({ limit: 50, page: 1 }) as { data: SightingItem[] };
-        const cutoff = Date.now() - days * 86_400_000;
-        setSightings(res.data.filter(s => new Date(s.seenAt).getTime() >= cutoff));
-      } catch {
-        setError('No se pudo cargar. ¿El servidor está activo?');
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, [days]);
+    setPage(1);
+    load(filter, 1);
+  }, [filter, load]);
+
+  function handleFilterChange(f: FilterKey) {
+    setFilter(f);
+    setSightings([]);
+  }
+
+  function loadMore() {
+    const next = page + 1;
+    setPage(next);
+    load(filter, next);
+  }
+
+  const hasMore = sightings.length < total;
 
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* Modal */}
       {selected && <SightingModal s={selected} onClose={() => setSelected(null)} />}
 
+      {/* Header */}
       <header className="bg-white border-b border-gray-100 px-4 py-4 flex items-center gap-3 sticky top-0 z-10">
         <Link href="/" className="p-2 rounded-xl hover:bg-gray-100 transition-colors">
           <ChevronLeft className="w-5 h-5" />
         </Link>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <h1 className="font-bold text-gray-900 flex items-center gap-2">
             <Eye className="w-5 h-5 text-brand-500" />
-            Avistamientos recientes
+            Avistamientos
           </h1>
-          <p className="text-xs text-gray-400">Perros vistos por la comunidad</p>
+          <p className="text-xs text-gray-400 truncate">Perros vistos y reportados por la comunidad</p>
         </div>
         <Link
           href="/reportar/avistamiento"
-          className="text-xs bg-brand-500 text-white px-3 py-2 rounded-xl font-semibold flex items-center gap-1.5"
+          className="text-xs bg-brand-500 text-white px-3 py-2 rounded-xl font-semibold flex items-center gap-1.5 shrink-0"
         >
           <Camera className="w-3.5 h-3.5" /> Reportar
         </Link>
@@ -203,30 +272,48 @@ export default function AvistamientosPage() {
 
       <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
 
-        {/* Filtro */}
-        <div className="flex gap-2">
-          {([1, 3, 7] as FilterDays[]).map(d => (
+        {/* Filtros */}
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          {FILTERS.map(f => (
             <button
-              key={d}
-              onClick={() => setDays(d)}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold border-2 transition-colors ${
-                days === d
+              key={f.key}
+              onClick={() => handleFilterChange(f.key)}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold border-2 transition-colors whitespace-nowrap ${
+                filter === f.key
                   ? 'border-brand-500 bg-brand-50 text-brand-600'
                   : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
               }`}
             >
-              {d === 1 ? 'Hoy' : `Últimos ${d} días`}
+              {f.label}
             </button>
           ))}
         </div>
 
-        {loading && (
-          <div className="space-y-4">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="card animate-pulse flex gap-4">
+        {/* Contador */}
+        {!loading && !error && (
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500">
+              {total === 0
+                ? 'Sin avistamientos'
+                : `${total} avistamiento${total !== 1 ? 's' : ''}`}
+            </p>
+            <button
+              onClick={() => load(filter, 1)}
+              className="text-xs text-brand-600 flex items-center gap-1 hover:underline"
+            >
+              <RefreshCw className="w-3 h-3" /> Actualizar
+            </button>
+          </div>
+        )}
+
+        {/* Skeleton loading */}
+        {loading && sightings.length === 0 && (
+          <div className="space-y-3">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="card flex gap-4 animate-pulse">
                 <div className="w-24 h-24 bg-gray-200 rounded-xl flex-shrink-0" />
                 <div className="flex-1 space-y-2 py-1">
-                  <div className="h-4 bg-gray-200 rounded w-1/2" />
+                  <div className="h-4 bg-gray-200 rounded w-1/3" />
                   <div className="h-3 bg-gray-200 rounded w-full" />
                   <div className="h-3 bg-gray-200 rounded w-2/3" />
                 </div>
@@ -235,84 +322,132 @@ export default function AvistamientosPage() {
           </div>
         )}
 
-        {error && <div className="bg-red-50 text-red-600 rounded-xl px-4 py-3 text-sm">{error}</div>}
-
-        {!loading && !error && sightings.length === 0 && (
-          <div className="card text-center py-14 space-y-3">
-            <div className="text-5xl">🐕</div>
-            <h2 className="font-bold text-gray-800">Sin avistamientos recientes</h2>
-            <p className="text-sm text-gray-500">
-              No se reportaron perros {days === 1 ? 'hoy' : `en los últimos ${days} días`}.
-            </p>
-            <Link href="/reportar/avistamiento" className="btn-primary inline-block mt-2">
-              Reportar un avistamiento
-            </Link>
+        {/* Error */}
+        {error && (
+          <div className="card flex items-center gap-3 text-red-600 bg-red-50 border border-red-100">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium">{error}</p>
+              <p className="text-xs text-red-400 mt-0.5">El servidor puede estar despertando, intentá de nuevo en unos segundos.</p>
+            </div>
+            <button onClick={() => load(filter, 1)} className="text-xs underline font-medium">Reintentar</button>
           </div>
         )}
 
-        {!loading && sightings.length > 0 && (
-          <>
-            <p className="text-sm text-gray-500">
-              {sightings.length} avistamiento{sightings.length !== 1 ? 's' : ''}{' '}
-              {days === 1 ? 'de hoy' : `de los últimos ${days} días`}
-            </p>
+        {/* Lista */}
+        {sightings.length > 0 && (
+          <div className="space-y-3">
+            {sightings.map(s => {
+              const st = STATUS[s.dogStatus] ?? STATUS.unknown;
+              const location = s.locationAddress ?? s.locationCity ?? '';
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setSelected(s)}
+                  className="card flex gap-4 w-full text-left hover:shadow-md active:scale-[0.99] transition-all"
+                >
+                  {/* Foto */}
+                  <div className="relative w-24 h-24 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
+                    {s.photos[0] ? (
+                      <Image src={s.photos[0]} alt="Perro avistado" fill className="object-cover" />
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-3xl">🐕</div>
+                    )}
+                    {/* Indicador de foto */}
+                    {s.photos.length > 1 && (
+                      <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1 rounded">
+                        +{s.photos.length - 1}
+                      </span>
+                    )}
+                  </div>
 
-            <div className="space-y-3">
-              {sightings.map(s => {
-                const status = STATUS_LABELS[s.dogStatus] ?? STATUS_LABELS.unknown;
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => setSelected(s)}
-                    className="card flex gap-4 w-full text-left hover:shadow-md active:scale-[0.99] transition-all cursor-pointer"
-                  >
-                    {/* Foto */}
-                    <div className="relative w-24 h-24 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
-                      {s.photos[0] ? (
-                        <Image src={s.photos[0]} alt="Perro avistado" fill className="object-cover" />
-                      ) : (
-                        <div className="flex items-center justify-center h-full text-3xl">🐕</div>
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    {/* Badges superiores */}
+                    <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg ${st.color}`}>
+                        {st.label}
+                      </span>
+                      {s.source === 'social_import' && (
+                        <span className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-lg font-medium flex items-center gap-1">
+                          <Sparkles className="w-2.5 h-2.5" /> Red social
+                        </span>
+                      )}
+                      {(s.matchCount ?? 0) > 0 && (
+                        <span className="text-xs bg-brand-50 text-brand-600 px-2 py-0.5 rounded-lg font-semibold">
+                          🔍 {s.matchCount} coincidencia{s.matchCount !== 1 ? 's' : ''}
+                        </span>
                       )}
                     </div>
 
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${status.color}`}>
-                          {status.label}
-                        </span>
-                        {s.source === 'social_import' && (
-                          <span className="text-xs bg-purple-100 text-purple-600 px-2 py-1 rounded-lg font-medium">
-                            Red social
-                          </span>
-                        )}
-                      </div>
+                    {/* Descripción */}
+                    {s.description ? (
+                      <p className="text-sm text-gray-700 line-clamp-2 mb-1.5">{s.description}</p>
+                    ) : (
+                      <p className="text-sm text-gray-400 italic mb-1.5">Sin descripción</p>
+                    )}
 
-                      {s.description && (
-                        <p className="text-sm text-gray-700 line-clamp-2 mb-2">{s.description}</p>
+                    {/* Ubicación y tiempo */}
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-400">
+                      {location && (
+                        <span className="flex items-center gap-1 truncate max-w-[180px]">
+                          <MapPin className="w-3 h-3 shrink-0" />
+                          {location}
+                        </span>
                       )}
-
-                      <div className="flex flex-wrap gap-3 text-xs text-gray-400">
-                        {(s.locationCity || s.locationAddress) && (
-                          <span className="flex items-center gap-1">
-                            <MapPin className="w-3.5 h-3.5" />
-                            {s.locationAddress ?? s.locationCity}
-                          </span>
-                        )}
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5" />
-                          {timeAgo(s.seenAt)}
-                        </span>
-                      </div>
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3 shrink-0" />
+                        {timeAgo(s.createdAt)}
+                      </span>
                     </div>
+                  </div>
 
-                    <ChevronRight className="w-4 h-4 text-gray-300 self-center flex-shrink-0" />
-                  </button>
-                );
-              })}
-            </div>
-          </>
+                  <ChevronRight className="w-4 h-4 text-gray-300 self-center flex-shrink-0" />
+                </button>
+              );
+            })}
+          </div>
         )}
+
+        {/* Cargar más */}
+        {hasMore && !loading && (
+          <button
+            onClick={loadMore}
+            className="w-full btn-secondary text-sm py-3"
+          >
+            Cargar más avistamientos
+          </button>
+        )}
+
+        {/* Carga adicional (paginación) */}
+        {loading && sightings.length > 0 && (
+          <div className="text-center py-4 text-sm text-gray-400">Cargando más...</div>
+        )}
+
+        {/* Empty state */}
+        {!loading && !error && sightings.length === 0 && (
+          <div className="card text-center py-14 space-y-4">
+            <div className="text-5xl">🐕</div>
+            <div>
+              <h2 className="font-bold text-gray-800">Sin avistamientos</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                {filter === 'today'
+                  ? 'Todavía no hay reportes de hoy.'
+                  : `No hay reportes en este período.`}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Link href="/reportar/avistamiento" className="btn-primary inline-block">
+                📍 Reportar un avistamiento
+              </Link>
+              <br />
+              <Link href="/reportar/red-social" className="btn-secondary inline-block text-sm">
+                📸 Vi un post en redes sociales
+              </Link>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
