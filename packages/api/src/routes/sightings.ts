@@ -73,6 +73,23 @@ export async function sightingsRoutes(app: FastifyInstance) {
       });
     });
 
+    // Si el usuario no tiene teléfono, notificarle para que lo agregue
+    const reporter = await prisma.user.findUnique({
+      where:  { id: sub },
+      select: { phone: true },
+    });
+    if (!reporter?.phone) {
+      await prisma.notification.create({
+        data: {
+          userId: sub,
+          type:   'case_update',
+          title:  '📱 Agregá tu teléfono al perfil',
+          body:   'Así otros usuarios pueden contactarte por WhatsApp cuando ven tu avistamiento.',
+          data:   { path: '/perfil' },
+        },
+      });
+    }
+
     return reply.code(201).send({ success: true, data: sighting });
   });
 

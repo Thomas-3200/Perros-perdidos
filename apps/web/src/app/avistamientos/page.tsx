@@ -127,6 +127,18 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
   const st = STATUS[s.dogStatus] ?? null;
   const [idx, setIdx] = useState(0);
   const [lightbox, setLightbox] = useState(false);
+  // Re-fetchear el avistamiento para obtener el phone actualizado del reporter
+  const [fresh, setFresh] = useState<SightingItem | null>(null);
+  const data = fresh ?? s;
+
+  useEffect(() => {
+    api.sightings.get(s.id)
+      .then((res: unknown) => {
+        const r = res as { data: SightingItem };
+        if (r?.data) setFresh(r.data);
+      })
+      .catch(() => {}); // silencioso — usa los datos base si falla
+  }, [s.id]);
 
   useEffect(() => {
     const fn = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -140,12 +152,12 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
     return () => { document.body.style.overflow = ''; };
   }, []);
 
-  const location = [s.locationAddress, s.locationCity].filter(Boolean).join(', ');
+  const location = [data.locationAddress, data.locationCity].filter(Boolean).join(', ');
 
   return (
     <>
-    {lightbox && s.photos.length > 0 && (
-      <Lightbox photos={s.photos} startIdx={idx} onClose={() => setLightbox(false)} />
+    {lightbox && data.photos.length > 0 && (
+      <Lightbox photos={data.photos} startIdx={idx} onClose={() => setLightbox(false)} />
     )}
     <div
       className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4"
@@ -157,7 +169,7 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
       >
         {/* Foto */}
         <div className="relative w-full h-64 bg-gray-100 flex-shrink-0">
-          {s.photos.length > 0 ? (
+          {data.photos.length > 0 ? (
             <>
               {/* Área clickeable para abrir lightbox */}
               <button
@@ -165,23 +177,23 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
                 onClick={() => setLightbox(true)}
                 aria-label="Ver imagen completa"
               />
-              <Image src={s.photos[idx]} alt="Avistamiento" fill className="object-cover" />
-              {s.photos.length > 1 && (
+              <Image src={data.photos[idx]} alt="Avistamiento" fill className="object-cover" />
+              {data.photos.length > 1 && (
                 <>
                   <button
-                    onClick={e => { e.stopPropagation(); setIdx(i => (i - 1 + s.photos.length) % s.photos.length); }}
+                    onClick={e => { e.stopPropagation(); setIdx(i => (i - 1 + data.photos.length) % data.photos.length); }}
                     className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 text-white rounded-full p-1.5 z-20"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={e => { e.stopPropagation(); setIdx(i => (i + 1) % s.photos.length); }}
+                    onClick={e => { e.stopPropagation(); setIdx(i => (i + 1) % data.photos.length); }}
                     className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 text-white rounded-full p-1.5 z-20"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>
                   <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-20">
-                    {s.photos.map((_, i) => (
+                    {data.photos.map((_, i) => (
                       <div key={i} className={`w-1.5 h-1.5 rounded-full ${i === idx ? 'bg-white' : 'bg-white/40'}`} />
                     ))}
                   </div>
@@ -200,7 +212,7 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
             <X className="w-4 h-4" />
           </button>
 
-          {s.source === 'social_import' && (
+          {data.source === 'social_import' && (
             <span className="absolute top-3 left-3 text-xs bg-purple-600 text-white px-2 py-1 rounded-lg font-medium flex items-center gap-1 z-20">
               <Sparkles className="w-3 h-3" /> Red social
             </span>
@@ -216,16 +228,16 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
                 {st.label}
               </span>
             )}
-            {(s.matchCount ?? 0) > 0 && (
+            {(data.matchCount ?? 0) > 0 && (
               <span className="text-xs bg-brand-50 text-brand-600 px-2 py-1 rounded-lg font-semibold">
-                🔍 {s.matchCount} caso{s.matchCount !== 1 ? 's' : ''} coincidente{s.matchCount !== 1 ? 's' : ''}
+                🔍 {data.matchCount} caso{data.matchCount !== 1 ? 's' : ''} coincidente{data.matchCount !== 1 ? 's' : ''}
               </span>
             )}
           </div>
 
           {/* Descripción */}
-          {s.description && (
-            <p className="text-sm text-gray-700 leading-relaxed">{s.description}</p>
+          {data.description && (
+            <p className="text-sm text-gray-700 leading-relaxed">{data.description}</p>
           )}
 
           {/* Datos */}
@@ -238,27 +250,27 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
             )}
             <div className="flex items-center gap-2 text-gray-600">
               <Clock className="w-4 h-4 text-brand-500 shrink-0" />
-              <span>Visto {timeAgo(s.seenAt)} · Reportado {timeAgo(s.createdAt)}</span>
+              <span>Visto {timeAgo(data.seenAt)} · Reportado {timeAgo(data.createdAt)}</span>
             </div>
           </div>
 
           {/* Botón de contacto con el reporter */}
-          {s.reporter?.name && (
-            s.reporter.phone ? (
+          {data.reporter?.name && (
+            data.reporter.phone ? (
               <a
-                href={`https://wa.me/${s.reporter.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${s.reporter.name}, vi tu avistamiento en Perros Perdidos y me gustaría consultarte sobre el perro que reportaste.`)}`}
+                href={`https://wa.me/${data.reporter.phone!.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${data.reporter.name}, vi tu avistamiento en Perros Perdidos y me gustaría consultarte sobre el perro que reportaste.`)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-2xl bg-[#25D366] hover:bg-[#20c05c] text-white font-semibold text-sm transition-colors"
               >
                 <MessageCircle className="w-4 h-4" />
-                Enviar mensaje a {s.reporter.name.split(' ')[0]}
+                Enviar mensaje a {data.reporter.name.split(' ')[0]}
               </a>
             ) : (
               <div className="flex items-center gap-3 bg-gray-50 rounded-2xl px-4 py-3">
                 <MessageCircle className="w-4 h-4 text-gray-400 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-gray-700">Reportado por {s.reporter.name}</p>
+                  <p className="text-sm font-medium text-gray-700">Reportado por {data.reporter.name}</p>
                   <p className="text-xs text-gray-400">No tiene teléfono cargado en su perfil</p>
                 </div>
               </div>
