@@ -282,7 +282,10 @@ export default function PerfilPage() {
   );
   const { data: meData } = useSWR(
     localUser ? 'user-me' : null,
-    () => api.users.me() as Promise<{ data: { name: string; email: string; role: string; createdAt: string } }>,
+    () => api.users.me() as Promise<{ data: {
+      name: string; email: string; role: string; createdAt: string;
+      avatarUrl?: string; phone?: string; locationCity?: string; locationCountry?: string;
+    } }>,
   );
 
   if (!localUser) return null;
