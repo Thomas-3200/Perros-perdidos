@@ -13,9 +13,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import prisma from '@perros/db';
 import type { ExtractedCaseData } from '@perros/shared';
 
-// Modelo configurable por env var — si el modelo por defecto da 404,
-// podés cambiarlo en Render → Environment → ANTHROPIC_MODEL
-const DEFAULT_MODEL = 'claude-3-haiku-20240307';
+// Modelo configurable por env var — podés cambiarlo en Render → Environment → ANTHROPIC_MODEL
+// Modelos disponibles (mayo 2026): claude-haiku-4-5 | claude-sonnet-4-6 | claude-opus-4-7
+const DEFAULT_MODEL = 'claude-haiku-4-5';
 const getModel = () => process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL;
 
 let _anthropic: Anthropic | null = null;
