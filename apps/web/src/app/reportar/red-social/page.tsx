@@ -1,26 +1,19 @@
 'use client';
 
-/**
- * Pantalla: Human API — Importar caso desde redes sociales
- * Permite:
- *   - Pegar un link
- *   - Escribir texto copiado de un post
- *   - Subir un screenshot
- */
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Link2, FileText, Image as ImageIcon, Sparkles, ChevronLeft, Check, Loader2 } from 'lucide-react';
+import { FileText, Image as ImageIcon, Sparkles, ChevronLeft, Check, Loader2, AlertTriangle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { isLoggedIn } from '@/lib/auth';
 import { AuthModal } from '@/components/auth/AuthModal';
+import { PhotoPicker } from '@/components/ui/PhotoPicker';
 import clsx from 'clsx';
 
-type InputMode = 'link' | 'text' | 'image';
+type InputMode = 'image' | 'text';
 
 export default function ReportarRedSocialPage() {
   const router  = useRouter();
-  const [mode,    setMode]    = useState<InputMode>('link');
-  const [link,    setLink]    = useState('');
+  const [mode,    setMode]    = useState<InputMode>('image');
   const [text,    setText]    = useState('');
   const [image,   setImage]   = useState<File | null>(null);
   const [loading,   setLoading]   = useState(false);
@@ -29,23 +22,17 @@ export default function ReportarRedSocialPage() {
   const [showAuth,  setShowAuth]  = useState(false);
 
   async function handleSubmit() {
-    // Verificar sesión antes de enviar
-    if (!isLoggedIn()) {
-      setShowAuth(true);
-      return;
-    }
+    if (!isLoggedIn()) { setShowAuth(true); return; }
     setLoading(true);
     setError('');
     try {
-      if (mode === 'link') {
-        await api.ingest.submitLink(link);
-      } else if (mode === 'text') {
-        await api.ingest.submitText(text);
-      } else if (mode === 'image' && image) {
+      if (mode === 'image' && image) {
         const fd = new FormData();
         fd.append('files', image);
         fd.append('sourceType', 'screenshot');
         await api.ingest.submitImage(fd);
+      } else if (mode === 'text') {
+        await api.ingest.submitText(text);
       }
       setDone(true);
     } catch (e: unknown) {
@@ -57,10 +44,12 @@ export default function ReportarRedSocialPage() {
 
   async function handleAuthSuccess() {
     setShowAuth(false);
-    // Continuar con el envío después del login
     await handleSubmit();
   }
 
+  const canSubmit = (mode === 'image' && image) || (mode === 'text' && text.trim().length > 10);
+
+  /* ── Pantalla de éxito ────────────────────────────────────────────────── */
   if (done) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -82,14 +71,10 @@ export default function ReportarRedSocialPage() {
             </ul>
           </div>
           <div className="space-y-3">
-            <button
-              onClick={() => router.push('/avistamientos')}
-              className="btn-primary w-full"
-            >
+            <button onClick={() => router.push('/avistamientos')} className="btn-primary w-full">
               Ver en Avistados →
             </button>
-            <button onClick={() => router.push('/reportar/red-social')}
-              className="btn-secondary w-full">
+            <button onClick={() => router.push('/reportar/red-social')} className="btn-secondary w-full">
               Reportar otro caso
             </button>
           </div>
@@ -98,111 +83,126 @@ export default function ReportarRedSocialPage() {
     );
   }
 
+  /* ── Formulario ───────────────────────────────────────────────────────── */
   return (
     <div className="min-h-screen bg-gray-50">
       {showAuth && (
-        <AuthModal
-          onSuccess={handleAuthSuccess}
-          onClose={() => setShowAuth(false)}
-        />
+        <AuthModal onSuccess={handleAuthSuccess} onClose={() => setShowAuth(false)} />
       )}
+
       <header className="bg-white border-b border-gray-100 px-4 py-4 flex items-center gap-3">
         <button onClick={() => router.back()} className="p-2 rounded-xl hover:bg-gray-100 transition-colors">
           <ChevronLeft className="w-5 h-5" />
         </button>
         <div>
-          <h1 className="font-bold text-gray-900">Caso de red social</h1>
-          <p className="text-xs text-gray-400">La IA extrae y estructura los datos por ti</p>
+          <h1 className="font-bold text-gray-900">Importar de redes sociales</h1>
+          <p className="text-xs text-gray-400">La IA extrae y estructura los datos por vos</p>
         </div>
       </header>
 
       <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
+
+        {/* Info banner */}
         <div className="bg-brand-50 rounded-2xl p-4 flex items-start gap-3">
           <Sparkles className="w-5 h-5 text-brand-500 flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-semibold text-brand-700">¿Viste un post de perro perdido?</p>
             <p className="text-xs text-brand-600 mt-1">
-              Envíanos el link, copia el texto o sube un screenshot.
-              Nuestro sistema lo convierte automáticamente en un caso estructurado.
+              Sacá un screenshot o pegá el texto del post.
+              La IA extrae automáticamente todos los datos importantes.
             </p>
           </div>
         </div>
 
         {/* Selector de modo */}
-        <div className="grid grid-cols-3 gap-2">
-          {([
-            { id: 'link',  label: 'Link',        icon: Link2     },
-            { id: 'text',  label: 'Texto',        icon: FileText  },
-            { id: 'image', label: 'Screenshot',   icon: ImageIcon },
-          ] as { id: InputMode; label: string; icon: React.ElementType }[]).map(({ id, label, icon: Icon }) => (
-            <button key={id} type="button"
-              onClick={() => setMode(id)}
-              className={clsx(
-                'flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 text-sm font-semibold transition-colors',
-                mode === id
-                  ? 'border-brand-500 bg-brand-50 text-brand-600'
-                  : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300',
-              )}
-            >
-              <Icon className="w-5 h-5" />
-              {label}
-            </button>
-          ))}
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setMode('image')}
+            className={clsx(
+              'flex flex-col items-center gap-2 py-4 rounded-2xl border-2 text-sm font-semibold transition-colors relative',
+              mode === 'image'
+                ? 'border-brand-500 bg-brand-50 text-brand-600'
+                : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300',
+            )}
+          >
+            {/* Badge recomendado */}
+            <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[10px] bg-hope-500 text-white font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
+              ⭐ Recomendado
+            </span>
+            <ImageIcon className="w-6 h-6" />
+            📸 Screenshot del post
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMode('text')}
+            className={clsx(
+              'flex flex-col items-center gap-2 py-4 rounded-2xl border-2 text-sm font-semibold transition-colors',
+              mode === 'text'
+                ? 'border-brand-500 bg-brand-50 text-brand-600'
+                : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300',
+            )}
+          >
+            <FileText className="w-6 h-6" />
+            📝 Pegar texto
+          </button>
         </div>
 
-        {/* Área de input según modo */}
-        {mode === 'link' && (
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">URL del post</label>
-            <input className="input" type="url"
-              placeholder="https://facebook.com/groups/... o https://instagram.com/..."
-              value={link} onChange={e => setLink(e.target.value)} />
-            <p className="text-xs text-gray-400">
-              ⚠️ Los posts privados de Facebook no se pueden leer automáticamente.
-              Si el post es privado, usá la opción <strong>Texto</strong> (pegá el contenido) o <strong>Screenshot</strong>.
+        {/* Input según modo */}
+        {mode === 'image' && (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 text-center">
+              Sacá captura de pantalla del post de Facebook, WhatsApp o Instagram y subila acá
             </p>
+            {image && (
+              <div className="rounded-2xl overflow-hidden border border-gray-200">
+                <img
+                  src={URL.createObjectURL(image)}
+                  alt="preview"
+                  className="w-full max-h-64 object-contain bg-gray-50"
+                />
+              </div>
+            )}
+            <PhotoPicker onFile={f => setImage(f)} />
           </div>
         )}
 
         {mode === 'text' && (
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Pega el texto del post</label>
-            <textarea className="input resize-none h-40"
-              placeholder="Copia y pega aquí el contenido del post con la descripción del perro perdido..."
-              value={text} onChange={e => setText(e.target.value)} />
+            <label className="text-sm font-medium text-gray-700">
+              Pegá el texto del post
+            </label>
+            <textarea
+              className="input resize-none h-44"
+              placeholder="Copiá y pegá acá el texto completo del post con la descripción del perro perdido, nombre, zona, contacto..."
+              value={text}
+              onChange={e => setText(e.target.value)}
+            />
+            <p className="text-xs text-gray-400">
+              Incluí toda la info que puedas: nombre, raza, color, zona, teléfono de contacto.
+            </p>
           </div>
         )}
 
-        {mode === 'image' && (
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Screenshot del post</label>
-            <label className="block cursor-pointer">
-              <div className="border-2 border-dashed border-gray-300 hover:border-brand-400 rounded-2xl p-8 text-center transition-colors">
-                {image ? (
-                  <img src={URL.createObjectURL(image)} alt="preview"
-                    className="max-h-52 object-contain rounded-xl mx-auto" />
-                ) : (
-                  <>
-                    <ImageIcon className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                    <p className="text-gray-500 text-sm">Toca para subir screenshot</p>
-                  </>
-                )}
-              </div>
-              <input type="file" accept="image/*" className="sr-only"
-                onChange={e => setImage(e.target.files?.[0] ?? null)} />
-            </label>
-          </div>
-        )}
+        {/* Aviso: links de Facebook no funcionan */}
+        <div className="flex items-start gap-2 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3">
+          <AlertTriangle className="w-4 h-4 text-yellow-600 mt-0.5 shrink-0" />
+          <p className="text-xs text-yellow-700">
+            <strong>¿Tenés solo el link?</strong> Los links de Facebook e Instagram requieren login y la IA no puede leerlos.
+            Usá screenshot o copiá el texto del post en su lugar.
+          </p>
+        </div>
 
         {error && <div className="bg-red-50 text-red-600 rounded-xl p-3 text-sm">{error}</div>}
 
         <button
           onClick={handleSubmit}
-          disabled={loading || (mode === 'link' && !link) || (mode === 'text' && !text) || (mode === 'image' && !image)}
-          className="btn-primary w-full flex items-center justify-center gap-2"
+          disabled={loading || !canSubmit}
+          className="btn-primary w-full flex items-center justify-center gap-2 py-4 text-base"
         >
           {loading
-            ? <><Loader2 className="w-4 h-4 animate-spin" /> Enviando…</>
+            ? <><Loader2 className="w-5 h-5 animate-spin" /> Enviando a la IA…</>
             : <><Sparkles className="w-5 h-5" /> Enviar a la IA</>
           }
         </button>
