@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Camera, MapPin, Phone, ChevronRight, ChevronLeft,
-  Check, Loader2, LocateFixed,
+  Check, Loader2, LocateFixed, Plus, X, ImageIcon,
 } from 'lucide-react';
-import { PhotoPicker } from '@/components/ui/PhotoPicker';
 import { api } from '@/lib/api';
 import { isLoggedIn } from '@/lib/auth';
 import { AuthModal } from '@/components/auth/AuthModal';
@@ -48,6 +47,101 @@ function validateStep(step: number, form: FormState): string {
   if (step === 2 && form.lastSeenLat === '')   return 'Necesitamos la ubicación (usá el botón GPS o ingresá las coordenadas)';
   if (step === 3 && !form.contactValue.trim()) return 'El dato de contacto es obligatorio';
   return '';
+}
+
+const MAX_PHOTOS = 3;
+const PHOTO_LABELS = ['Frente', 'Lado', 'Otra'];
+
+// ── Componente selector de 3 fotos ────────────────────────────────────────────
+function PhotoSlots({
+  photos,
+  onChange,
+}: {
+  photos: File[];
+  onChange: (photos: File[]) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [activeSlot, setActiveSlot] = useState<number | null>(null);
+
+  function openPicker(slot: number) {
+    setActiveSlot(slot);
+    if (inputRef.current) {
+      inputRef.current.value = '';
+      inputRef.current.click();
+    }
+  }
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || activeSlot === null) return;
+    const next = [...photos];
+    next[activeSlot] = file;
+    onChange(next.slice(0, MAX_PHOTOS));
+    e.target.value = '';
+  }
+
+  function remove(i: number) {
+    const next = photos.filter((_, j) => j !== i);
+    onChange(next);
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-3 gap-3">
+        {Array.from({ length: MAX_PHOTOS }).map((_, i) => {
+          const file = photos[i];
+          const url  = file ? URL.createObjectURL(file) : null;
+          return (
+            <div key={i} className="aspect-square relative">
+              {url ? (
+                <div className="relative w-full h-full rounded-2xl overflow-hidden border-2 border-brand-400">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt={PHOTO_LABELS[i]} className="w-full h-full object-cover" />
+                  {/* Botón quitar */}
+                  <button
+                    type="button"
+                    onClick={() => remove(i)}
+                    className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                  {/* Label ángulo */}
+                  <span className="absolute bottom-1 left-1 right-1 text-center text-[10px] font-bold text-white bg-black/40 rounded-lg py-0.5">
+                    {PHOTO_LABELS[i]}
+                  </span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => openPicker(i)}
+                  className="w-full h-full rounded-2xl border-2 border-dashed border-gray-300
+                             hover:border-brand-400 hover:bg-brand-50 transition-colors
+                             flex flex-col items-center justify-center gap-1 active:scale-95"
+                >
+                  <Plus className="w-6 h-6 text-gray-400" />
+                  <span className="text-[11px] font-medium text-gray-400">{PHOTO_LABELS[i]}</span>
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Input oculto */}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/jpg,image/png,image/webp,image/*"
+        capture="environment"
+        className="sr-only"
+        onChange={handleFile}
+      />
+
+      <p className="text-xs text-gray-400 text-center">
+        Tocá cada recuadro para agregar una foto · Máximo {MAX_PHOTOS} fotos
+      </p>
+    </div>
+  );
 }
 
 export default function ReportarPerdidoPage() {
@@ -183,38 +277,23 @@ export default function ReportarPerdidoPage() {
               <Camera className="w-12 h-12 text-brand-500 mx-auto mb-3" />
               <h2 className="text-xl font-bold">Fotos de tu perro</h2>
               <p className="text-gray-500 text-sm mt-1">
-                Cuanto más claras, mejor podrá identificarlo la comunidad y la IA
+                Agregá hasta 3 fotos en diferentes ángulos · JPG, PNG o WEBP
               </p>
             </div>
 
+            <PhotoSlots
+              photos={form.photos}
+              onChange={files => { set('photos', files); setError(''); }}
+            />
+
             {form.photos.length > 0 && (
               <p className="text-sm text-brand-600 font-semibold text-center">
-                {form.photos.length} foto{form.photos.length > 1 ? 's' : ''} seleccionada{form.photos.length > 1 ? 's' : ''} ✓
+                {form.photos.length} de {MAX_PHOTOS} foto{form.photos.length > 1 ? 's' : ''} agregada{form.photos.length > 1 ? 's' : ''} ✓
               </p>
             )}
 
-            <PhotoPicker
-              multiple
-              onFile={f => { set('photos', [f]); setError(''); }}
-              onFiles={files => { set('photos', files); setError(''); }}
-            />
-
-            {form.photos.map((f, i) => (
-              <div key={i} className="flex items-center gap-3 bg-white rounded-xl p-3 border border-gray-100">
-                <div className="w-12 h-12 rounded-lg bg-gray-100 overflow-hidden shrink-0">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-cover" />
-                </div>
-                <span className="text-sm text-gray-600 truncate flex-1">{f.name}</span>
-                <button
-                  onClick={() => set('photos', form.photos.filter((_, j) => j !== i))}
-                  className="text-gray-400 hover:text-red-500 text-lg leading-none shrink-0"
-                >×</button>
-              </div>
-            ))}
-
             <p className="text-xs text-amber-700 bg-amber-50 rounded-xl p-3">
-              💡 Tip: incluí una foto de frente y una de lado donde se vea el cuerpo completo
+              💡 Tip: frente, perfil y una foto de cuerpo completo aumentan mucho las chances de que alguien lo reconozca
             </p>
           </div>
         )}
