@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Camera, MapPin, ChevronLeft, Check, LocateFixed, Loader2, Heart, Clock,
@@ -102,6 +102,99 @@ async function reverseGeocode(lat: number, lng: number): Promise<{ city: string;
   }
 }
 
+/* ── Mapa con pin arrastrable (Leaflet cargado desde CDN) ───────────────── */
+function DraggableMap({
+  lat, lng,
+  onMove,
+}: {
+  lat: number; lng: number;
+  onMove: (lat: number, lng: number) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapRef    = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const markerRef = useRef<any>(null);
+
+  // Inicializar el mapa una sola vez al montar
+  useEffect(() => {
+    // 1. Inyectar CSS de Leaflet si no está ya
+    if (!document.getElementById('leaflet-css')) {
+      const link = document.createElement('link');
+      link.id  = 'leaflet-css';
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+
+    // 2. Cargar el JS de Leaflet (CDN) una sola vez
+    function getL(): Promise<unknown> {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((window as any).L) return Promise.resolve((window as any).L);
+      return new Promise(resolve => {
+        const s = document.createElement('script');
+        s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        s.onload = () => resolve((window as any).L);
+        document.head.appendChild(s);
+      });
+    }
+
+    let destroyed = false;
+    getL().then(L => {
+      if (destroyed || !containerRef.current || mapRef.current) return;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const map = (L as any).map(containerRef.current).setView([lat, lng], 16);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (L as any).tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/">OpenStreetMap</a>',
+      }).addTo(map);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const marker = (L as any).marker([lat, lng], { draggable: true }).addTo(map);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      marker.on('dragend', (e: any) => {
+        const pos = e.target.getLatLng();
+        onMove(pos.lat, pos.lng);
+      });
+
+      mapRef.current    = map;
+      markerRef.current = marker;
+    });
+
+    return () => {
+      destroyed = true;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current    = null;
+        markerRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // solo al montar
+
+  // Mover el marker cuando las coords cambian desde fuera (re-geolocalización)
+  useEffect(() => {
+    if (markerRef.current && mapRef.current) {
+      markerRef.current.setLatLng([lat, lng]);
+      mapRef.current.setView([lat, lng], 16);
+    }
+  }, [lat, lng]);
+
+  return (
+    <div className="rounded-2xl overflow-hidden border border-green-200">
+      <div ref={containerRef} style={{ height: '200px', width: '100%' }} />
+      <div className="px-3 py-2 bg-green-50 flex items-center gap-2">
+        <span className="text-green-600 text-sm">📍</span>
+        <p className="text-xs text-green-700 font-medium">
+          Arrastrá el marcador para ajustar la posición exacta
+        </p>
+      </div>
+    </div>
+  );
+}
+
 const TOTAL_STEPS = 3;
 
 export default function ReportarAvistamientoPage() {
@@ -143,6 +236,15 @@ export default function ReportarAvistamientoPage() {
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
   }, [step]);
+
+  /* ── Cuando el usuario arrastra el pin del mapa ─────────────────────── */
+  const handleMapMove = useCallback(async (newLat: number, newLng: number) => {
+    setLat(String(newLat));
+    setLng(String(newLng));
+    const geo = await reverseGeocode(newLat, newLng);
+    if (geo.city)    setCity(geo.city);
+    if (geo.address) setAddress(geo.address);
+  }, []);
 
   const geolocate = useCallback(async () => {
     if (!navigator.geolocation) {
@@ -361,23 +463,13 @@ export default function ReportarAvistamientoPage() {
                 )}
               </button>
 
-              {/* Mapa mini de confirmación */}
+              {/* Mapa interactivo con pin arrastrable */}
               {locationConfirmed && lat && lng && (
-                <div className="rounded-2xl overflow-hidden border border-green-200 bg-green-50">
-                  <iframe
-                    title="Ubicación detectada"
-                    width="100%"
-                    height="160"
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(lng)-0.005},${Number(lat)-0.005},${Number(lng)+0.005},${Number(lat)+0.005}&layer=mapnik&marker=${lat},${lng}`}
-                    className="border-0"
-                  />
-                  <div className="px-3 py-2 flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-600 shrink-0" />
-                    <p className="text-xs text-green-700 font-medium truncate">
-                      {address || city || 'Ubicación obtenida'}
-                    </p>
-                  </div>
-                </div>
+                <DraggableMap
+                  lat={Number(lat)}
+                  lng={Number(lng)}
+                  onMove={handleMapMove}
+                />
               )}
 
               <p className="text-xs text-gray-400 text-center">— o ingresá la dirección manualmente —</p>
