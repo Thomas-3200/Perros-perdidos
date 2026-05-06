@@ -177,6 +177,34 @@ export async function sightingsRoutes(app: FastifyInstance) {
     return { success: true, data: sighting };
   });
 
+  // ── PATCH /:id — Editar avistamiento (solo el autor) ────────────────────────
+  app.patch('/:id', { preHandler: requireAuth }, async (req, reply) => {
+    const { sub } = req.user as { sub: string };
+    const { id }  = req.params as { id: string };
+
+    const body = z.object({
+      dogStatus:       z.enum(['still_there', 'gone', 'retained', 'injured', 'unknown']).optional(),
+      description:     z.string().optional(),
+      locationCity:    z.string().optional(),
+      locationAddress: z.string().optional(),
+    }).parse(req.body);
+
+    const sighting = await prisma.sighting.findFirst({ where: { id, reporterId: sub } });
+    if (!sighting) return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Avistamiento no encontrado o no tenés permiso' } });
+
+    const updated = await prisma.sighting.update({
+      where: { id },
+      data: {
+        ...(body.dogStatus       !== undefined && { dogStatus:       body.dogStatus }),
+        ...(body.description     !== undefined && { description:     body.description }),
+        ...(body.locationCity    !== undefined && { locationCity:    body.locationCity }),
+        ...(body.locationAddress !== undefined && { locationAddress: body.locationAddress }),
+      },
+    });
+
+    return { success: true, data: updated };
+  });
+
   // ── DELETE /:id — Eliminar avistamiento (solo el autor) ───────────────────
   app.delete('/:id', { preHandler: requireAuth }, async (req, reply) => {
     const { sub } = req.user as { sub: string };

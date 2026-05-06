@@ -104,6 +104,7 @@ export const api = {
     },
     mine:   () => request('/api/v1/sightings/mine'),
     get:    (id: string) => request(`/api/v1/sightings/${id}`),
+    update: (id: string, data: unknown) => request(`/api/v1/sightings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     // Para avistamientos usamos FormData (con fotos), no JSON
     create: (formData: FormData) => fetchWithTimeout(`${API_URL}/api/v1/sightings`, {
       method:  'POST',

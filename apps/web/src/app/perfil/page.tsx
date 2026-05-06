@@ -43,6 +43,14 @@ interface MyImport {
   status: 'pending' | 'processed' | 'rejected';
   createdAt: string;
   rawInput: string;
+  extractedData?: {
+    description?: string;
+    city?: string;
+    address?: string;
+    date?: string;
+    photos?: string[];
+    [key: string]: unknown;
+  };
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -251,6 +259,218 @@ function ConfirmModal({
   );
 }
 
+// ── Opciones de estado del perro ──────────────────────────────────────────────
+const SIGHTING_STATUS_OPTIONS = [
+  { value: 'still_there', label: '📍 Sigue ahí'   },
+  { value: 'gone',        label: '🏃 Ya se fue'   },
+  { value: 'retained',    label: '🏠 Lo tienen'    },
+  { value: 'injured',     label: '🚨 Lastimado'    },
+  { value: 'unknown',     label: '❓ No sé'          },
+];
+
+// ── Modal de edición de avistamiento ─────────────────────────────────────────
+function EditSightingModal({
+  sighting,
+  onClose,
+  onSaved,
+}: {
+  sighting: MySighting;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [dogStatus,    setDogStatus]    = useState(sighting.dogStatus ?? 'unknown');
+  const [description,  setDescription]  = useState(sighting.description ?? '');
+  const [city,         setCity]         = useState(sighting.locationCity ?? '');
+  const [address,      setAddress]      = useState(sighting.locationAddress ?? '');
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState('');
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      await api.sightings.update(sighting.id, {
+        dogStatus,
+        description:     description.trim() || undefined,
+        locationCity:    city.trim()         || undefined,
+        locationAddress: address.trim()      || undefined,
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40">
+      <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl p-6 space-y-5 shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-gray-900 text-lg">Editar avistamiento</h2>
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 transition-colors">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSave} className="space-y-4">
+          {/* Estado del perro */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-2 block">Estado del perro</label>
+            <div className="grid grid-cols-1 gap-1.5">
+              {SIGHTING_STATUS_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setDogStatus(opt.value)}
+                  className={`text-left px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all ${
+                    dogStatus === opt.value
+                      ? 'border-brand-500 bg-brand-50 text-brand-700'
+                      : 'border-gray-200 text-gray-600 hover:border-brand-300'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Ciudad */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Ciudad</label>
+            <input
+              className="input"
+              value={city}
+              onChange={e => setCity(e.target.value)}
+              placeholder="Ej: Buenos Aires"
+            />
+          </div>
+
+          {/* Dirección */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Dirección / Zona</label>
+            <input
+              className="input"
+              value={address}
+              onChange={e => setAddress(e.target.value)}
+              placeholder="Ej: Av. Corrientes 1234, Palermo"
+            />
+          </div>
+
+          {/* Descripción */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Descripción</label>
+            <textarea
+              className="input resize-none h-24"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="Color, tamaño, collar, comportamiento..."
+            />
+          </div>
+
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 rounded-xl px-3 py-2">{error}</p>
+          )}
+
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose} disabled={loading} className="flex-1 btn-secondary">
+              Cancelar
+            </button>
+            <button type="submit" disabled={loading} className="flex-1 btn-primary flex items-center justify-center gap-2">
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              Guardar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Modal de detalle de importación ───────────────────────────────────────────
+function ImportDetailModal({
+  imp,
+  onClose,
+}: {
+  imp: MyImport;
+  onClose: () => void;
+}) {
+  const st = IMPORT_STATUS[imp.status] ?? IMPORT_STATUS.pending;
+  const isImageUrl = imp.rawInput.startsWith('http') &&
+    (imp.sourceType === 'screenshot' || imp.sourceType === 'photo');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40">
+      <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-gray-900 text-lg">Detalle de importación</h2>
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 transition-colors">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        {/* Estado y tipo */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-lg font-semibold capitalize">
+            {imp.sourceType === 'link' ? '🔗 Link' : imp.sourceType === 'text' ? '📝 Texto' : '📸 Imagen'}
+          </span>
+          <span className={`text-sm font-medium ${st.className}`}>{st.text}</span>
+          <span className="text-xs text-gray-400 ml-auto">{daysAgo(imp.createdAt)}</span>
+        </div>
+
+        {/* Contenido */}
+        <div className="bg-gray-50 rounded-xl p-3 space-y-2">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Contenido</p>
+          {isImageUrl ? (
+            <img
+              src={imp.rawInput}
+              alt="Imagen importada"
+              className="w-full rounded-lg object-contain max-h-52 bg-white"
+            />
+          ) : imp.sourceType === 'link' ? (
+            <a
+              href={imp.rawInput}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-blue-600 break-all hover:underline"
+            >
+              {imp.rawInput}
+            </a>
+          ) : (
+            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+              {imp.rawInput}
+            </p>
+          )}
+        </div>
+
+        {/* Datos extraídos por IA */}
+        {imp.extractedData && Object.keys(imp.extractedData).length > 0 && (
+          <div className="bg-brand-50 rounded-xl p-3 space-y-2">
+            <p className="text-xs font-semibold text-brand-600 uppercase tracking-wide">Datos extraídos por IA</p>
+            <div className="space-y-1 text-sm text-gray-700">
+              {imp.extractedData.description && (
+                <p><span className="font-medium text-gray-500">Descripción:</span> {String(imp.extractedData.description)}</p>
+              )}
+              {imp.extractedData.city && (
+                <p><span className="font-medium text-gray-500">Ciudad:</span> {String(imp.extractedData.city)}</p>
+              )}
+              {imp.extractedData.address && (
+                <p><span className="font-medium text-gray-500">Dirección:</span> {String(imp.extractedData.address)}</p>
+              )}
+              {imp.extractedData.date && (
+                <p><span className="font-medium text-gray-500">Fecha:</span> {String(imp.extractedData.date)}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        <button onClick={onClose} className="btn-secondary w-full">Cerrar</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Página principal ───────────────────────────────────────────────────────────
 export default function PerfilPage() {
   const router = useRouter();
@@ -266,6 +486,10 @@ export default function PerfilPage() {
     onConfirm: () => Promise<void>;
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Modales de edición / detalle
+  const [editingSighting, setEditingSighting] = useState<MySighting | null>(null);
+  const [viewingImport,   setViewingImport]   = useState<MyImport   | null>(null);
 
   // Solo en cliente: leer localStorage una vez montado
   useEffect(() => {
@@ -391,6 +615,26 @@ export default function PerfilPage() {
             }
             setEditingProfile(false);
           }}
+        />
+      )}
+
+      {/* Modal de edición de avistamiento */}
+      {editingSighting && (
+        <EditSightingModal
+          sighting={editingSighting}
+          onClose={() => setEditingSighting(null)}
+          onSaved={() => {
+            mutate('sightings-mine');
+            setEditingSighting(null);
+          }}
+        />
+      )}
+
+      {/* Modal de detalle de importación */}
+      {viewingImport && (
+        <ImportDetailModal
+          imp={viewingImport}
+          onClose={() => setViewingImport(null)}
         />
       )}
 
@@ -627,15 +871,21 @@ export default function PerfilPage() {
 
           {sightings.map(s => (
             <div key={s.id} className="card flex items-center gap-4">
-              {/* Foto */}
-              <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-100 shrink-0">
+              {/* Foto — clickeable para editar */}
+              <button
+                onClick={() => setEditingSighting(s)}
+                className="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-100 shrink-0"
+              >
                 {s.photos?.[0]
                   ? <Image src={s.photos[0]} alt="Avistamiento" fill className="object-cover" />
                   : <div className="flex items-center justify-center h-full text-3xl">👁️</div>}
-              </div>
+              </button>
 
-              {/* Info */}
-              <div className="flex-1 min-w-0">
+              {/* Info — clickeable para editar */}
+              <button
+                onClick={() => setEditingSighting(s)}
+                className="flex-1 min-w-0 text-left"
+              >
                 <p className="font-semibold text-gray-800 text-sm truncate">
                   {s.locationCity ?? 'Ubicación no especificada'}
                 </p>
@@ -651,15 +901,23 @@ export default function PerfilPage() {
                 {s.description && (
                   <p className="text-xs text-gray-500 mt-1 truncate">{s.description}</p>
                 )}
-              </div>
-
-              {/* Eliminar */}
-              <button
-                onClick={() => deleteSighting(s.id)}
-                className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors shrink-0"
-                title="Eliminar avistamiento">
-                <Trash2 className="w-4 h-4" />
               </button>
+
+              {/* Acciones */}
+              <div className="flex flex-col gap-1 shrink-0">
+                <button
+                  onClick={() => setEditingSighting(s)}
+                  className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-300 hover:text-blue-500 transition-colors"
+                  title="Editar avistamiento">
+                  <Pencil className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => deleteSighting(s.id)}
+                  className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
+                  title="Eliminar avistamiento">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -689,17 +947,23 @@ export default function PerfilPage() {
             const isImage = imp.sourceType === 'screenshot' || imp.sourceType === 'photo';
             return (
               <div key={imp.id} className="card flex items-center gap-4">
-                {/* Miniatura si es imagen */}
-                <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-100 shrink-0">
+                {/* Miniatura — clickeable para ver detalle */}
+                <button
+                  onClick={() => setViewingImport(imp)}
+                  className="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-100 shrink-0"
+                >
                   {isImage && imp.rawInput.startsWith('http')
                     ? <Image src={imp.rawInput} alt="Post importado" fill className="object-cover" />
                     : <div className="flex items-center justify-center h-full text-2xl">
                         {imp.sourceType === 'text' ? '📝' : imp.sourceType === 'link' ? '🔗' : '📸'}
                       </div>}
-                </div>
+                </button>
 
-                {/* Info */}
-                <div className="flex-1 min-w-0">
+                {/* Info — clickeable para ver detalle */}
+                <button
+                  onClick={() => setViewingImport(imp)}
+                  className="flex-1 min-w-0 text-left"
+                >
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-gray-600 capitalize">{imp.sourceType}</span>
                     <span className={`text-xs font-medium ${st.className}`}>{st.text}</span>
@@ -708,15 +972,23 @@ export default function PerfilPage() {
                   {imp.sourceType === 'text' && (
                     <p className="text-xs text-gray-500 truncate mt-1">{imp.rawInput.slice(0, 60)}…</p>
                   )}
-                </div>
-
-                {/* Eliminar */}
-                <button
-                  onClick={() => deleteImport(imp.id)}
-                  className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors shrink-0"
-                  title="Eliminar importación">
-                  <Trash2 className="w-4 h-4" />
                 </button>
+
+                {/* Acciones */}
+                <div className="flex flex-col gap-1 shrink-0">
+                  <button
+                    onClick={() => setViewingImport(imp)}
+                    className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-300 hover:text-blue-500 transition-colors"
+                    title="Ver detalle">
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => deleteImport(imp.id)}
+                    className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
+                    title="Eliminar importación">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             );
           })}
