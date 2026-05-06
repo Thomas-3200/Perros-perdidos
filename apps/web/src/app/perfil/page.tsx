@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getUser, clearSession, isLoggedIn, saveSession } from '@/lib/auth';
+import { AuthModal } from '@/components/auth/AuthModal';
 
 // ── Tipos ──────────────────────────────────────────────────────────────────────
 interface MyCaseItem {
@@ -253,8 +254,9 @@ function ConfirmModal({
 // ── Página principal ───────────────────────────────────────────────────────────
 export default function PerfilPage() {
   const router = useRouter();
-  const [localUser,     setLocalUser]     = useState(getUser());
-  const [activeTab,     setActiveTab]     = useState<'casos' | 'avistamientos' | 'importaciones'>('casos');
+  const [localUser,      setLocalUser]      = useState(getUser());
+  const [showAuthModal,  setShowAuthModal]  = useState(false);
+  const [activeTab,      setActiveTab]      = useState<'casos' | 'avistamientos' | 'importaciones'>('casos');
   const [editingProfile, setEditingProfile] = useState(false);
 
   // Modal de confirmación
@@ -265,8 +267,8 @@ export default function PerfilPage() {
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    if (!isLoggedIn()) router.replace('/');
-  }, [router]);
+    if (!isLoggedIn()) setShowAuthModal(true);
+  }, []);
 
   const { data: casesData, isLoading: casesLoading, error: casesError } = useSWR(
     localUser ? 'cases-mine' : null,
@@ -288,7 +290,24 @@ export default function PerfilPage() {
     } }>,
   );
 
-  if (!localUser) return null;
+  if (!localUser) {
+    return (
+      <>
+        <div className="flex flex-col items-center justify-center min-h-screen gap-4 px-4">
+          <p className="text-gray-500 text-sm">Iniciando sesión…</p>
+        </div>
+        {showAuthModal && (
+          <AuthModal
+            onSuccess={() => {
+              setLocalUser(getUser());
+              setShowAuthModal(false);
+            }}
+            onClose={() => router.replace('/')}
+          />
+        )}
+      </>
+    );
+  }
 
   const me       = meData?.data;
   const cases    = casesData?.data ?? [];
