@@ -137,4 +137,40 @@ export async function sightingsRoutes(app: FastifyInstance) {
     if (!sighting) return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Avistamiento no encontrado' } });
     return { success: true, data: sighting };
   });
+
+  // ── GET /mine — Mis avistamientos ─────────────────────────────────────────
+  app.get('/mine', { preHandler: requireAuth }, async (req) => {
+    const { sub } = req.user as { sub: string };
+    const query = z.object({
+      page:  z.coerce.number().default(1),
+      limit: z.coerce.number().default(20),
+    }).parse(req.query);
+
+    const [sightings, total] = await Promise.all([
+      prisma.sighting.findMany({
+        where: { reporterId: sub },
+        orderBy: { createdAt: 'desc' },
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+      prisma.sighting.count({ where: { reporterId: sub } }),
+    ]);
+
+    return { success: true, data: sightings, meta: { total, page: query.page, limit: query.limit } };
+  });
+
+  // ── DELETE /:id — Eliminar avistamiento (solo el autor) ───────────────────
+  app.delete('/:id', { preHandler: requireAuth }, async (req, reply) => {
+    const { sub } = req.user as { sub: string };
+    const { id }  = req.params as { id: string };
+
+    const sighting = await prisma.sighting.findFirst({ where: { id, reporterId: sub } });
+    if (!sighting) return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Avistamiento no encontrado o no tenés permiso' } });
+
+    // Eliminar matches relacionados primero
+    await prisma.match.deleteMany({ where: { sightingId: id } });
+    await prisma.sighting.delete({ where: { id } });
+
+    return { success: true, message: 'Avistamiento eliminado' };
+  });
 }

@@ -84,6 +84,7 @@ export const api = {
     create:     (data: unknown) => request('/api/v1/cases', { method: 'POST', body: JSON.stringify(data) }),
     setStatus:  (id: string, status: string) =>
       request(`/api/v1/cases/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+    delete:     (id: string) => request(`/api/v1/cases/${id}`, { method: 'DELETE' }),
   },
 
   // ─── Avistamientos ───────────────────────────────────────────────────────────
@@ -92,6 +93,7 @@ export const api = {
       const qs = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
       return request(`/api/v1/sightings${qs}`);
     },
+    mine:   () => request('/api/v1/sightings/mine'),
     get:    (id: string) => request(`/api/v1/sightings/${id}`),
     // Para avistamientos usamos FormData (con fotos), no JSON
     create: (formData: FormData) => fetchWithTimeout(`${API_URL}/api/v1/sightings`, {
@@ -99,6 +101,7 @@ export const api = {
       headers: { ...getAuthHeader() },
       body:    formData,
     }, 90_000), // 90s: Render cold-start (~60s) + Cloudinary upload (~15s)
+    delete: (id: string) => request(`/api/v1/sightings/${id}`, { method: 'DELETE' }),
   },
 
   // ─── Matches ─────────────────────────────────────────────────────────────────
@@ -122,7 +125,8 @@ export const api = {
         headers: { ...getAuthHeader() },
         body:    formData,
       }, 120_000), // 120s: Render wake-up (~30s) + Cloudinary upload (~10s) + Claude AI (~60s)
-    myImports: () => request('/api/v1/ingest'),
+    myImports:    () => request('/api/v1/ingest'),
+    deleteImport: (id: string) => request(`/api/v1/ingest/${id}`, { method: 'DELETE' }),
   },
 
   // ─── Apoyo emocional ─────────────────────────────────────────────────────────

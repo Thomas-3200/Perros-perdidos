@@ -135,4 +135,17 @@ export async function ingestRoutes(app: FastifyInstance) {
 
     return { success: true, data: imports };
   });
+
+  // ── DELETE /:id — Eliminar importación (solo el autor) ───────────────────
+  app.delete('/:id', { preHandler: requireAuth }, async (req, reply) => {
+    const { sub } = req.user as { sub: string };
+    const { id }  = req.params as { id: string };
+
+    const imported = await prisma.importedSocialCase.findFirst({ where: { id, submittedById: sub } });
+    if (!imported) return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Importación no encontrada o no tenés permiso' } });
+
+    await prisma.importedSocialCase.delete({ where: { id } });
+
+    return { success: true, message: 'Importación eliminada' };
+  });
 }

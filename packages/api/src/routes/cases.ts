@@ -208,6 +208,23 @@ export async function casesRoutes(app: FastifyInstance) {
     return { success: true, data: lostCase };
   });
 
+  // ── DELETE /:id — Eliminar caso (solo el dueño) ──────────────────────────
+  app.delete('/:id', { preHandler: requireAuth }, async (req, reply) => {
+    const { sub } = req.user as { sub: string };
+    const { id }  = req.params as { id: string };
+
+    const existing = await prisma.lostCase.findFirst({ where: { id, ownerId: sub } });
+    if (!existing) return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Caso no encontrado o no tenés permiso' } });
+
+    // Eliminar en cascada: matches → supportSessions → case → dog
+    await prisma.match.deleteMany({ where: { lostCaseId: id } });
+    await prisma.supportSession.deleteMany({ where: { lostCaseId: id } });
+    await prisma.lostCase.delete({ where: { id } });
+    await prisma.dog.deleteMany({ where: { id: existing.dogId } });
+
+    return { success: true, message: 'Caso eliminado correctamente' };
+  });
+
   // ── PATCH /:id/status — Actualizar estado del caso ────────────────────────
   app.patch('/:id/status', { preHandler: requireAuth }, async (req, reply) => {
     const { sub } = req.user as { sub: string };
