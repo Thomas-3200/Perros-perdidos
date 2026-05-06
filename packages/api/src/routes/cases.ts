@@ -151,9 +151,17 @@ export async function casesRoutes(app: FastifyInstance) {
   // ── GET /mine — Mis casos (autenticado) ──────────────────────────────────
   app.get('/mine', { preHandler: requireAuth }, async (req) => {
     const { sub } = req.user as { sub: string };
+    const query = z.object({
+      status: z.enum(['active', 'found', 'closed', 'all']).default('all'),
+      limit:  z.coerce.number().default(20),
+    }).parse(req.query);
 
     const cases = await prisma.lostCase.findMany({
-      where: { ownerId: sub },
+      where: {
+        ownerId: sub,
+        ...(query.status !== 'all' && { status: query.status }),
+      },
+      take: query.limit,
       include: {
         dog: { select: { name: true, breed: true, color: true, size: true, photos: true } },
         _count: { select: { matches: { where: { status: { in: ['pending', 'confirmed'] } } } } },

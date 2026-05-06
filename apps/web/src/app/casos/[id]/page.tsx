@@ -570,7 +570,7 @@ function CaseDetail() {
             Buscar a tu compañero puede ser muy difícil. Estamos acá para ayudarte.
           </p>
           <Link
-            href="/apoyo"
+            href={`/apoyo?caseId=${caseData?.id ?? ''}`}
             className="inline-flex items-center gap-2 bg-gray-800 text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-gray-900 transition-colors"
           >
             <MessageCircle className="w-4 h-4" />
