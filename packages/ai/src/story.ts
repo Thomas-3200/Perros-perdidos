@@ -6,8 +6,18 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 
+// claude-sonnet-4-6 para generación de historias: mejor calidad narrativa
+// Configurable via ANTHROPIC_STORY_MODEL en Render → Environment
+const STORY_MODEL = process.env.ANTHROPIC_STORY_MODEL ?? 'claude-sonnet-4-6';
+
 let _anthropic: Anthropic | null = null;
-const getAnthropic = () => { if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? 'placeholder' }); return _anthropic; };
+const getAnthropic = () => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY no configurada');
+  }
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _anthropic;
+};
 
 export interface StoryInput {
   dogName:     string;
@@ -25,7 +35,7 @@ export async function generateReunionStory(input: StoryInput): Promise<string> {
     ? `El dueño escribió esto sobre la reunificación:\n"${storyText}"`
     : `El perro llevaba ${daysMissing} días perdido en ${city}.`;
 
-  const prompt = `Escribe una historia corta y emotiva sobre la reunificación de ${dogName} (${breed}) con su dueño en ${city}.
+  const prompt = `Escribe una historia corta y emotiva sobre la reunificación de ${dogName} (${breed}) con su dueño ${ownerName} en ${city}.
 
 ${userContext}
 
@@ -40,7 +50,7 @@ No inventar detalles que contradigan los datos reales.
 Escribe en español, en primera o tercera persona según fluya mejor.`;
 
   const response = await getAnthropic().messages.create({
-    model:      'claude-opus-4-5',
+    model:      STORY_MODEL,
     max_tokens: 400,
     messages:   [{ role: 'user', content: prompt }],
   });

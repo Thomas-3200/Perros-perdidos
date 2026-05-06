@@ -10,8 +10,18 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 
+// claude-sonnet-4-6 para apoyo emocional: mejor calidad de respuesta empática
+// Configurable via ANTHROPIC_SUPPORT_MODEL en Render → Environment
+const SUPPORT_MODEL = process.env.ANTHROPIC_SUPPORT_MODEL ?? 'claude-sonnet-4-6';
+
 let _anthropic: Anthropic | null = null;
-const getAnthropic = () => { if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? 'placeholder' }); return _anthropic; };
+const getAnthropic = () => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY no configurada');
+  }
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _anthropic;
+};
 
 const SYSTEM_PROMPT = `Eres un asistente empático y cálido que ayuda a dueños de perros perdidos en momentos de angustia.
 
@@ -59,7 +69,7 @@ export async function emotionalSupport(input: SupportInput): Promise<string> {
   ];
 
   const response = await getAnthropic().messages.create({
-    model:      'claude-opus-4-5',
+    model:      SUPPORT_MODEL,
     max_tokens: 500,
     system:     SYSTEM_PROMPT,
     messages,
