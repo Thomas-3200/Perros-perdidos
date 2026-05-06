@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -8,9 +8,10 @@ import useSWR, { mutate } from 'swr';
 import {
   User, MapPin, Clock, ShieldCheck, AlertCircle,
   PlusCircle, LogOut, ChevronRight, Trash2, Eye, Share2,
+  Camera, Pencil, X, Loader2, Check,
 } from 'lucide-react';
 import { api } from '@/lib/api';
-import { getUser, clearSession, isLoggedIn } from '@/lib/auth';
+import { getUser, clearSession, isLoggedIn, saveSession } from '@/lib/auth';
 
 // ── Tipos ──────────────────────────────────────────────────────────────────────
 interface MyCaseItem {
@@ -63,6 +64,156 @@ function daysAgo(dateStr: string) {
   return `hace ${d} días`;
 }
 
+// ── Modal de edición de perfil ────────────────────────────────────────────────
+function EditProfileModal({
+  user,
+  onClose,
+  onSaved,
+}: {
+  user: { name: string; phone?: string; locationCity?: string; avatarUrl?: string };
+  onClose: () => void;
+  onSaved: (updated: { name: string; phone?: string; locationCity?: string; avatarUrl?: string }) => void;
+}) {
+  const fileRef  = useRef<HTMLInputElement>(null);
+  const [name,       setName]       = useState(user.name);
+  const [phone,      setPhone]      = useState(user.phone ?? '');
+  const [city,       setCity]       = useState(user.locationCity ?? '');
+  const [avatarUrl,  setAvatarUrl]  = useState(user.avatarUrl ?? '');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState('');
+
+  function pickAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarFile(file);
+    setAvatarUrl(URL.createObjectURL(file));
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      let newAvatarUrl = user.avatarUrl ?? '';
+
+      // 1. Subir avatar si cambió
+      if (avatarFile) {
+        const fd = new FormData();
+        fd.append('avatar', avatarFile);
+        const avatarRes = await api.users.uploadAvatar(fd) as { data: { avatarUrl: string } };
+        newAvatarUrl = avatarRes.data.avatarUrl;
+      }
+
+      // 2. Actualizar datos de perfil
+      const updated = await api.users.updateMe({
+        name:         name.trim(),
+        phone:        phone.trim() || undefined,
+        locationCity: city.trim()  || undefined,
+      }) as { data: { name: string; phone?: string; locationCity?: string; avatarUrl?: string } };
+
+      onSaved({ ...updated.data, avatarUrl: newAvatarUrl || updated.data.avatarUrl });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/40">
+      <div className="bg-white rounded-2xl p-6 max-w-sm w-full space-y-5 shadow-xl">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-gray-900 text-lg">Editar perfil</h2>
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 transition-colors">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSave} className="space-y-4">
+          {/* Avatar */}
+          <div className="flex flex-col items-center gap-2">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="relative w-20 h-20 rounded-full overflow-hidden bg-brand-100 group"
+            >
+              {avatarUrl ? (
+                <Image src={avatarUrl} alt="Avatar" fill className="object-cover" unoptimized />
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <User className="w-9 h-9 text-brand-400" />
+                </div>
+              )}
+              <div className="absolute inset-0 bg-black/30 flex items-center justify-center
+                              opacity-0 group-hover:opacity-100 transition-opacity">
+                <Camera className="w-6 h-6 text-white" />
+              </div>
+            </button>
+            <button type="button" onClick={() => fileRef.current?.click()}
+              className="text-xs text-brand-500 font-medium hover:underline flex items-center gap-1">
+              <Camera className="w-3 h-3" /> Cambiar foto
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickAvatar} />
+          </div>
+
+          {/* Nombre */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Nombre</label>
+            <input
+              className="input"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="Tu nombre"
+              required
+            />
+          </div>
+
+          {/* Teléfono */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Teléfono</label>
+            <input
+              className="input"
+              type="tel"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder="Ej: +54 11 1234-5678"
+            />
+          </div>
+
+          {/* Ciudad */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Ciudad</label>
+            <input
+              className="input"
+              value={city}
+              onChange={e => setCity(e.target.value)}
+              placeholder="Ej: Buenos Aires"
+            />
+          </div>
+
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 rounded-xl px-3 py-2">{error}</p>
+          )}
+
+          <div className="flex gap-3">
+            <button type="button" onClick={onClose} disabled={loading}
+              className="flex-1 btn-secondary">
+              Cancelar
+            </button>
+            <button type="submit" disabled={loading || !name.trim()}
+              className="flex-1 btn-primary flex items-center justify-center gap-2">
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              Guardar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Modal de confirmación ──────────────────────────────────────────────────────
 function ConfirmModal({
   message, onConfirm, onCancel, loading,
@@ -102,8 +253,9 @@ function ConfirmModal({
 // ── Página principal ───────────────────────────────────────────────────────────
 export default function PerfilPage() {
   const router = useRouter();
-  const [localUser, setLocalUser] = useState(getUser());
-  const [activeTab, setActiveTab] = useState<'casos' | 'avistamientos' | 'importaciones'>('casos');
+  const [localUser,     setLocalUser]     = useState(getUser());
+  const [activeTab,     setActiveTab]     = useState<'casos' | 'avistamientos' | 'importaciones'>('casos');
+  const [editingProfile, setEditingProfile] = useState(false);
 
   // Modal de confirmación
   const [confirmModal, setConfirmModal] = useState<{
@@ -193,6 +345,24 @@ export default function PerfilPage() {
   return (
     <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
 
+      {/* Modal de edición de perfil */}
+      {editingProfile && me && (
+        <EditProfileModal
+          user={me}
+          onClose={() => setEditingProfile(false)}
+          onSaved={(updated) => {
+            // Actualizar caché SWR y localStorage
+            mutate('user-me');
+            if (localUser) {
+              const newUser = { ...localUser, name: updated.name };
+              setLocalUser(newUser);
+              saveSession(localStorage.getItem('pp_token') ?? '', newUser);
+            }
+            setEditingProfile(false);
+          }}
+        />
+      )}
+
       {/* Modal de confirmación */}
       {confirmModal && (
         <ConfirmModal
@@ -216,18 +386,43 @@ export default function PerfilPage() {
 
       {/* Tarjeta de usuario */}
       <div className="card flex items-center gap-4">
-        <div className="w-14 h-14 rounded-full bg-brand-100 flex items-center justify-center shrink-0">
-          <User className="w-7 h-7 text-brand-500" />
+        {/* Avatar */}
+        <div className="relative w-16 h-16 rounded-full overflow-hidden bg-brand-100 shrink-0">
+          {me?.avatarUrl ? (
+            <Image src={me.avatarUrl} alt={me.name} fill className="object-cover" />
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <User className="w-8 h-8 text-brand-400" />
+            </div>
+          )}
         </div>
+
+        {/* Info */}
         <div className="flex-1 min-w-0">
           <p className="font-bold text-gray-900 truncate">{me?.name ?? localUser.name}</p>
           <p className="text-sm text-gray-500 truncate">{me?.email ?? localUser.email}</p>
-          {me?.role && me.role !== 'owner' && (
-            <span className="inline-block mt-1 text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium capitalize">
-              {me.role}
-            </span>
-          )}
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            {me?.locationCity && (
+              <span className="flex items-center gap-1 text-xs text-gray-400">
+                <MapPin className="w-3 h-3" />{me.locationCity}
+              </span>
+            )}
+            {me?.role && me.role !== 'owner' && (
+              <span className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium capitalize">
+                {me.role}
+              </span>
+            )}
+          </div>
         </div>
+
+        {/* Editar */}
+        <button
+          onClick={() => setEditingProfile(true)}
+          className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-brand-500 transition-colors shrink-0"
+          title="Editar perfil"
+        >
+          <Pencil className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Resumen */}

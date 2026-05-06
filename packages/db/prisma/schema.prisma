@@ -123,6 +123,11 @@ model User {
   role             UserRole @default(owner)
   reputationScore  Int      @default(0)
 
+  // Auth — null para usuarios OAuth-only
+  passwordHash     String?
+  googleId         String?  @unique
+  facebookId       String?  @unique
+
   // Ubicación default del usuario (último conocida)
   locationLat      Float?
   locationLng      Float?

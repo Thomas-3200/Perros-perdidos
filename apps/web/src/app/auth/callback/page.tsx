@@ -3,6 +3,9 @@
 import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
+import { saveSession } from '@/lib/auth';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
 function CallbackHandler() {
   const router       = useRouter();
@@ -12,15 +15,32 @@ function CallbackHandler() {
     const token = searchParams.get('token');
     const error = searchParams.get('error');
 
-    if (token) {
-      localStorage.setItem('pp_token', token);
-      // Redirigir a perfil o a donde el usuario estaba
-      const returnTo = sessionStorage.getItem('pp_return_to') ?? '/perfil';
-      sessionStorage.removeItem('pp_return_to');
-      router.replace(returnTo);
-    } else {
-      router.replace(`/login?error=${error ?? 'unknown'}`);
+    if (!token) {
+      router.replace(`/?error=${error ?? 'unknown'}`);
+      return;
     }
+
+    // Guardar token inmediatamente y luego buscar perfil completo
+    localStorage.setItem('pp_token', token);
+
+    fetch(`${API_URL}/api/v1/users/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then((res: { data: { id: string; name: string; email: string; role: string } }) => {
+        if (res?.data) {
+          saveSession(token, res.data);
+        }
+        const returnTo = sessionStorage.getItem('pp_return_to') ?? '/perfil';
+        sessionStorage.removeItem('pp_return_to');
+        router.replace(returnTo);
+      })
+      .catch(() => {
+        // Si falla el fetch, redirigir igual
+        const returnTo = sessionStorage.getItem('pp_return_to') ?? '/perfil';
+        sessionStorage.removeItem('pp_return_to');
+        router.replace(returnTo);
+      });
   }, [router, searchParams]);
 
   return (

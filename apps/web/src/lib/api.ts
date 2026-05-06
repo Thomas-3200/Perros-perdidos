@@ -68,9 +68,17 @@ async function request<T>(
 // ─── Usuarios ─────────────────────────────────────────────────────────────────
 export const api = {
   users: {
-    register: (data: unknown) => request('/api/v1/users/register', { method: 'POST', body: JSON.stringify(data) }),
-    login:    (data: unknown) => request('/api/v1/users/login',    { method: 'POST', body: JSON.stringify(data) }),
-    me:       ()              => request('/api/v1/users/me'),
+    register:       (data: unknown)    => request('/api/v1/users/register', { method: 'POST', body: JSON.stringify(data) }),
+    login:          (data: unknown)    => request('/api/v1/users/login',    { method: 'POST', body: JSON.stringify(data) }),
+    me:             ()                 => request('/api/v1/users/me'),
+    updateMe:       (data: unknown)    => request('/api/v1/users/me',       { method: 'PATCH', body: JSON.stringify(data) }),
+    uploadAvatar:   (formData: FormData) =>
+      fetchWithTimeout(`${API_URL}/api/v1/users/me/avatar`, {
+        method:  'POST',
+        headers: { ...getAuthHeader() },
+        body:    formData,
+      }),
+    changePassword: (data: unknown)    => request('/api/v1/users/me/password', { method: 'PATCH', body: JSON.stringify(data) }),
   },
 
   // ─── Casos perdidos ─────────────────────────────────────────────────────────
