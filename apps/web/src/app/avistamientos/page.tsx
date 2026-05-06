@@ -28,11 +28,11 @@ interface SightingItem {
 }
 
 const STATUS: Record<string, { label: string; color: string }> = {
-  still_there: { label: '📍 Sigue ahí',    color: 'bg-green-100 text-green-700'   },
-  gone:        { label: '🏃 Ya se fue',    color: 'bg-yellow-100 text-yellow-700' },
-  retained:    { label: '🏠 Lo tienen',    color: 'bg-blue-100 text-blue-700'     },
-  injured:     { label: '🚨 Lastimado',    color: 'bg-red-100 text-red-700'       },
-  unknown:     { label: '❓ Sin confirmar', color: 'bg-gray-100 text-gray-600'     },
+  still_there: { label: '📍 Sigue ahí', color: 'bg-green-100 text-green-700'   },
+  gone:        { label: '🏃 Ya se fue', color: 'bg-yellow-100 text-yellow-700' },
+  retained:    { label: '🏠 Lo tienen', color: 'bg-blue-100 text-blue-700'     },
+  injured:     { label: '🚨 Lastimado', color: 'bg-red-100 text-red-700'       },
+  // 'unknown' eliminado — no se muestra badge si no hay estado confirmado
 };
 
 function timeAgo(dateStr: string): string {
@@ -49,7 +49,7 @@ function timeAgo(dateStr: string): string {
 
 /* ── Modal de detalle ───────────────────────────────────────────────────── */
 function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void }) {
-  const st = STATUS[s.dogStatus] ?? STATUS.unknown;
+  const st = STATUS[s.dogStatus] ?? null;
   const [idx, setIdx] = useState(0);
 
   useEffect(() => {
@@ -121,7 +121,7 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
         <div className="p-5 space-y-4 overflow-y-auto">
           {/* Estado + matches */}
           <div className="flex items-center gap-2 flex-wrap">
-            {s.dogStatus && STATUS[s.dogStatus] && (
+            {st && (
               <span className={`text-sm font-semibold px-3 py-1 rounded-xl ${st.color}`}>
                 {st.label}
               </span>
@@ -150,30 +150,30 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
               <Clock className="w-4 h-4 text-brand-500 shrink-0" />
               <span>Visto {timeAgo(s.seenAt)} · Reportado {timeAgo(s.createdAt)}</span>
             </div>
-            {s.reporter?.name && (
-              <div className="flex items-center gap-2 text-gray-500 text-xs">
-                <span>👤 Reportado por {s.reporter.name}</span>
-              </div>
-            )}
           </div>
 
           {/* Botón de contacto con el reporter */}
-          {s.reporter?.phone ? (
-            <a
-              href={`https://wa.me/${s.reporter.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${s.reporter.name}, vi tu avistamiento en Perros Perdidos y me gustaría consultarte sobre el perro que reportaste.`)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-2xl bg-[#25D366] hover:bg-[#20c05c] text-white font-semibold text-sm transition-colors"
-            >
-              <MessageCircle className="w-4 h-4" />
-              Enviar mensaje a {s.reporter.name.split(' ')[0]}
-            </a>
-          ) : s.reporter?.name ? (
-            <div className="flex items-center gap-2 bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-500">
-              <MessageCircle className="w-4 h-4 shrink-0" />
-              <span>Reportado por <strong>{s.reporter.name}</strong> · Sin teléfono disponible</span>
-            </div>
-          ) : null}
+          {s.reporter?.name && (
+            s.reporter.phone ? (
+              <a
+                href={`https://wa.me/${s.reporter.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${s.reporter.name}, vi tu avistamiento en Perros Perdidos y me gustaría consultarte sobre el perro que reportaste.`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-2xl bg-[#25D366] hover:bg-[#20c05c] text-white font-semibold text-sm transition-colors"
+              >
+                <MessageCircle className="w-4 h-4" />
+                Enviar mensaje a {s.reporter.name.split(' ')[0]}
+              </a>
+            ) : (
+              <div className="flex items-center gap-3 bg-gray-50 rounded-2xl px-4 py-3">
+                <MessageCircle className="w-4 h-4 text-gray-400 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Reportado por {s.reporter.name}</p>
+                  <p className="text-xs text-gray-400">No tiene teléfono cargado en su perfil</p>
+                </div>
+              </div>
+            )
+          )}
 
           <div className="space-y-2">
             <Link
@@ -359,7 +359,7 @@ export default function AvistamientosPage() {
         {sightings.length > 0 && (
           <div className="space-y-3">
             {sightings.map(s => {
-              const st = STATUS[s.dogStatus] ?? STATUS.unknown;
+              const st = STATUS[s.dogStatus] ?? null;
               const location = s.locationAddress ?? s.locationCity ?? '';
               return (
                 <button
@@ -386,7 +386,7 @@ export default function AvistamientosPage() {
                   <div className="flex-1 min-w-0">
                     {/* Badges superiores */}
                     <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
-                      {s.dogStatus && STATUS[s.dogStatus] && (
+                      {st && (
                         <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg ${st.color}`}>
                           {st.label}
                         </span>

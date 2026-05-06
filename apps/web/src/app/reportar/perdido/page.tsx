@@ -53,6 +53,7 @@ const MAX_PHOTOS = 3;
 const PHOTO_LABELS = ['Frente', 'Lado', 'Otra'];
 
 // ── Componente selector de 3 fotos ────────────────────────────────────────────
+// Usa 3 inputs separados (uno por slot) para evitar race conditions con estado async
 function PhotoSlots({
   photos,
   onChange,
@@ -60,28 +61,24 @@ function PhotoSlots({
   photos: File[];
   onChange: (photos: File[]) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [activeSlot, setActiveSlot] = useState<number | null>(null);
+  const refs = [
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+  ];
 
-  function openPicker(slot: number) {
-    setActiveSlot(slot);
-    if (inputRef.current) {
-      inputRef.current.value = '';
-      inputRef.current.click();
-    }
-  }
-
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFile(slot: number, e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || activeSlot === null) return;
-    const next = [...photos];
-    next[activeSlot] = file;
-    onChange(next.slice(0, MAX_PHOTOS));
     e.target.value = '';
+    if (!file) return;
+    const next = [...photos];
+    next[slot] = file;
+    onChange(next);
   }
 
   function remove(i: number) {
-    const next = photos.filter((_, j) => j !== i);
+    const next = [...photos];
+    next.splice(i, 1);
     onChange(next);
   }
 
@@ -93,6 +90,15 @@ function PhotoSlots({
           const url  = file ? URL.createObjectURL(file) : null;
           return (
             <div key={i} className="aspect-square relative">
+              {/* Input oculto individual por slot */}
+              <input
+                ref={refs[i]}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={e => handleFile(i, e)}
+              />
+
               {url ? (
                 <div className="relative w-full h-full rounded-2xl overflow-hidden border-2 border-brand-400">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -105,6 +111,13 @@ function PhotoSlots({
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
+                  {/* Toca para reemplazar */}
+                  <button
+                    type="button"
+                    onClick={() => refs[i].current?.click()}
+                    className="absolute inset-0 w-full h-full opacity-0"
+                    aria-label={`Reemplazar foto ${PHOTO_LABELS[i]}`}
+                  />
                   {/* Label ángulo */}
                   <span className="absolute bottom-1 left-1 right-1 text-center text-[10px] font-bold text-white bg-black/40 rounded-lg py-0.5">
                     {PHOTO_LABELS[i]}
@@ -113,7 +126,7 @@ function PhotoSlots({
               ) : (
                 <button
                   type="button"
-                  onClick={() => openPicker(i)}
+                  onClick={() => refs[i].current?.click()}
                   className="w-full h-full rounded-2xl border-2 border-dashed border-gray-300
                              hover:border-brand-400 hover:bg-brand-50 transition-colors
                              flex flex-col items-center justify-center gap-1 active:scale-95"
@@ -126,16 +139,6 @@ function PhotoSlots({
           );
         })}
       </div>
-
-      {/* Input oculto */}
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/jpeg,image/jpg,image/png,image/webp,image/*"
-        capture="environment"
-        className="sr-only"
-        onChange={handleFile}
-      />
 
       <p className="text-xs text-gray-400 text-center">
         Tocá cada recuadro para agregar una foto · Máximo {MAX_PHOTOS} fotos
