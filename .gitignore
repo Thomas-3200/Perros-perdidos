@@ -12,3 +12,9 @@ uploads/
 .DS_Store
 .claude/
 *.tsbuildinfo
+
+# Archivos compilados de packages (se generan en build, no deben estar en git)
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map

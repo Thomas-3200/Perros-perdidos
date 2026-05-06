@@ -12,6 +12,12 @@ export const metadata: Metadata = {
   },
   description: 'Comunidad + IA ayudando a reunir perros perdidos con sus familias en Argentina.',
   metadataBase: new URL('https://perros-perdidos-web.vercel.app'),
+  manifest:    '/manifest.webmanifest',
+  appleWebApp: {
+    capable:        true,
+    statusBarStyle: 'default',
+    title:          'Perros Perdidos',
+  },
   openGraph: {
     siteName:    'Perros Perdidos',
     title:       'Perros Perdidos — Red de Reunificación Canina',
