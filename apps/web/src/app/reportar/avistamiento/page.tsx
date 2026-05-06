@@ -10,6 +10,43 @@ import { isLoggedIn } from '@/lib/auth';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { PhotoPicker } from '@/components/ui/PhotoPicker';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+
+/* ── Comprimir imagen antes de subir (Canvas API) ───────────────────────── */
+async function compressImage(file: File, maxPx = 1280, quality = 0.82): Promise<File> {
+  return new Promise(resolve => {
+    const img = new window.Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxPx || height > maxPx) {
+        if (width >= height) { height = Math.round((height * maxPx) / width); width = maxPx; }
+        else                 { width  = Math.round((width  * maxPx) / height); height = maxPx; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width  = width;
+      canvas.height = height;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        blob => {
+          if (!blob) { resolve(file); return; }
+          resolve(new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }));
+        },
+        'image/jpeg',
+        quality,
+      );
+    };
+    img.onerror = () => resolve(file); // fallback: usar original
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+/* ── Pre-calentar el servidor para evitar cold-start en el envío ─────────── */
+async function warmUp(): Promise<void> {
+  try {
+    await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(45_000) });
+  } catch { /* ignorar — si falla el ping, el envío intentará igual */ }
+}
+
 const DOG_STATUS_OPTIONS = [
   { value: 'still_there', label: '📍 Sigue ahí',   desc: 'El perro todavía está en ese lugar' },
   { value: 'gone',        label: '🏃 Ya se fue',   desc: 'Vi al perro pero ya no está' },
@@ -145,20 +182,30 @@ export default function ReportarAvistamientoPage() {
     setLoadingHint('');
     setError('');
 
-    // Mensaje progresivo: si tarda más de 8s, avisar que el servidor se está despertando
-    const hintTimer = setTimeout(
-      () => setLoadingHint('El servidor se está despertando… aguardá unos segundos más 🐾'),
-      8_000,
-    );
+    // Timers de hint progresivos
+    const t1 = setTimeout(() => setLoadingHint('Despertando el servidor… un momento 🐾'), 5_000);
+    const t2 = setTimeout(() => setLoadingHint('Ya casi… subiendo tu avistamiento ✨'),   20_000);
 
     try {
-      const seenAtISO = timeKeyToISO(timeKey, customDate);
+      // 1️⃣ Pre-calentar el servidor (warm-up) para que el cold start no cuente
+      //    contra el timeout de la request principal
+      setLoadingHint('Conectando con el servidor…');
+      await warmUp();
+      setLoadingHint('');
 
-      // Armar descripción de dirección completa para la API
+      // 2️⃣ Comprimir la foto (si hay) antes de subir — de 3-5MB a ~200-400KB
+      let fileToUpload = photo;
+      if (photo) {
+        setLoadingHint('Preparando la foto…');
+        fileToUpload = await compressImage(photo);
+        setLoadingHint('');
+      }
+
+      const seenAtISO  = timeKeyToISO(timeKey, customDate);
       const fullAddress = [exactAddr, address].filter(Boolean).join(', ');
 
       const fd = new FormData();
-      if (photo) fd.append('files', photo);
+      if (fileToUpload) fd.append('files', fileToUpload);
       fd.append('locationLat',     lat || '-34.6037');
       fd.append('locationLng',     lng || '-58.3816');
       fd.append('locationAddress', fullAddress);
@@ -167,13 +214,22 @@ export default function ReportarAvistamientoPage() {
       fd.append('dogStatus',       status);
       fd.append('description',     desc);
 
+      // 3️⃣ Enviar — el servidor ya está despierto, esto debería tardar <15s
       await api.sightings.create(fd);
       setDone(true);
+
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Error al enviar el avistamiento';
-      setError(msg);
+      const raw = e instanceof Error ? e.message : 'Error al enviar';
+      // Si fue timeout, puede que igualmente se haya guardado
+      const isTimeout = raw.toLowerCase().includes('tard') || raw.toLowerCase().includes('timeout');
+      setError(
+        isTimeout
+          ? 'La conexión tardó demasiado. Revisá en "Avistamientos" — puede que ya se haya guardado. Si no aparece, tocá Reintentar.'
+          : raw,
+      );
     } finally {
-      clearTimeout(hintTimer);
+      clearTimeout(t1);
+      clearTimeout(t2);
       setLoading(false);
       setLoadingHint('');
     }

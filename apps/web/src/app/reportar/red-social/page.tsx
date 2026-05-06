@@ -9,6 +9,34 @@ import { AuthModal } from '@/components/auth/AuthModal';
 import { PhotoPicker } from '@/components/ui/PhotoPicker';
 import clsx from 'clsx';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+
+async function compressImage(file: File, maxPx = 1600, quality = 0.85): Promise<File> {
+  return new Promise(resolve => {
+    const img = new window.Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxPx || height > maxPx) {
+        if (width >= height) { height = Math.round((height * maxPx) / width); width = maxPx; }
+        else                 { width  = Math.round((width  * maxPx) / height); height = maxPx; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        blob => resolve(blob ? new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : file),
+        'image/jpeg', quality,
+      );
+    };
+    img.onerror = () => resolve(file);
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+async function warmUp(): Promise<void> {
+  try { await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(45_000) }); } catch {}
+}
+
 type InputMode   = 'image' | 'text';
 type ResultState = 'processed' | 'rejected' | 'pending' | null;
 
@@ -23,33 +51,45 @@ export default function ReportarRedSocialPage() {
   const [error,     setError]     = useState('');
   const [showAuth,  setShowAuth]  = useState(false);
 
+  const [loadingHint, setLoadingHint] = useState('');
+
   async function handleSubmit() {
     if (!isLoggedIn()) { setShowAuth(true); return; }
     setLoading(true);
     setError('');
     setDebugInfo('');
+    setLoadingHint('Conectando con el servidor…');
+
     try {
+      // 1️⃣ Pre-calentar el servidor
+      await warmUp();
+      setLoadingHint('');
+
       let res: { aiProcessed?: boolean; aiError?: string; message?: string; data?: { status?: string } } = {};
 
       if (mode === 'image' && image) {
+        // 2️⃣ Comprimir imagen (de 3-5MB a ~300KB) antes de enviar
+        setLoadingHint('Preparando imagen…');
+        const compressed = await compressImage(image);
+        setLoadingHint('Analizando con IA… (puede tardar hasta 30 seg)');
+
         const fd = new FormData();
-        fd.append('files', image);
+        fd.append('files', compressed);
         fd.append('sourceType', 'screenshot');
         res = await api.ingest.submitImage(fd) as typeof res;
       } else if (mode === 'text') {
+        setLoadingHint('Analizando con IA…');
         res = await api.ingest.submitText(text) as typeof res;
       }
 
-      // Guardar info de debug para mostrarla si fue rechazado
       if (res?.aiError) setDebugInfo(res.aiError);
-
-      // Determinar el resultado real según la respuesta de la API
       const status = (res?.data as { status?: string })?.status ?? 'pending';
       setResult(status as ResultState);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al enviar');
     } finally {
       setLoading(false);
+      setLoadingHint('');
     }
   }
 
@@ -268,13 +308,15 @@ export default function ReportarRedSocialPage() {
           </p>
         </div>
 
-        {/* Aviso: puede tardar hasta 20 segundos */}
+        {/* Hint de carga progresivo */}
         {loading && (
           <div className="bg-brand-50 border border-brand-100 rounded-xl px-4 py-3 flex items-center gap-3">
             <Loader2 className="w-5 h-5 text-brand-500 animate-spin shrink-0" />
             <div>
-              <p className="text-brand-700 text-sm font-semibold">La IA está analizando tu imagen…</p>
-              <p className="text-brand-600 text-xs mt-0.5">Esto puede tardar hasta 20 segundos. No cierres la pantalla.</p>
+              <p className="text-brand-700 text-sm font-semibold">
+                {loadingHint || 'Procesando…'}
+              </p>
+              <p className="text-brand-600 text-xs mt-0.5">No cierres la pantalla.</p>
             </div>
           </div>
         )}
