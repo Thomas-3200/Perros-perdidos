@@ -723,6 +723,19 @@ export default function PerfilPage() {
         </div>
       )}
 
+      {/* Donar */}
+      <Link
+        href="/donar"
+        className="card flex items-center gap-3 hover:shadow-md transition-shadow border-hope-200 bg-hope-50"
+      >
+        <Heart className="w-5 h-5 text-hope-500 fill-current shrink-0" />
+        <div className="flex-1">
+          <p className="font-semibold text-gray-800 text-sm">Apoyá la plataforma</p>
+          <p className="text-xs text-gray-500">Donaciones voluntarias para mantener la app gratuita</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+      </Link>
+
       {/* Acceso admin */}
       {(me?.role === 'admin' || me?.role === 'moderator') && (
         <Link href="/admin" className="card flex items-center gap-3 hover:shadow-md transition-shadow border-brand-200">

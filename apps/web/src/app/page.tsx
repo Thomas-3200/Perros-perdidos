@@ -243,6 +243,24 @@ export default function HomePage() {
           <ReunionFeed limit={3} />
         </section>
 
+        {/* Donación */}
+        <div className="bg-hope-50 border border-hope-200 rounded-3xl p-5 flex items-center gap-4">
+          <div className="text-3xl shrink-0">❤️</div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-gray-900 text-sm">Apoyá esta causa</p>
+            <p className="text-xs text-gray-500 leading-relaxed mt-0.5">
+              100% gratuito. Tu donación mantiene los servidores y la IA funcionando.
+            </p>
+          </div>
+          <Link
+            href="/donar"
+            className="shrink-0 bg-hope-500 hover:bg-hope-600 text-white font-bold
+                       px-4 py-2.5 rounded-2xl transition-colors text-sm whitespace-nowrap"
+          >
+            Donar 🐾
+          </Link>
+        </div>
+
         {/* CTA final */}
         <div className="bg-gradient-to-br from-brand-500 to-brand-700 rounded-3xl p-6 text-white text-center space-y-3">
           <div className="text-3xl">🐾</div>
