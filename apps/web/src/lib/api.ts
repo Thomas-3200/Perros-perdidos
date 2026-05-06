@@ -121,7 +121,7 @@ export const api = {
         method:  'POST',
         headers: { ...getAuthHeader() },
         body:    formData,
-      }, 60_000), // 60s: Render wake-up (~30s) + Cloudinary upload (~15s)
+      }, 120_000), // 120s: Render wake-up (~30s) + Cloudinary upload (~10s) + Claude AI (~60s)
     myImports: () => request('/api/v1/ingest'),
   },
 
