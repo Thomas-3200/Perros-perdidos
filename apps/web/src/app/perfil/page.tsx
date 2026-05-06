@@ -254,8 +254,9 @@ function ConfirmModal({
 // ── Página principal ───────────────────────────────────────────────────────────
 export default function PerfilPage() {
   const router = useRouter();
-  const [localUser,      setLocalUser]      = useState(getUser());
-  const [showAuthModal,  setShowAuthModal]  = useState(false);
+  // localUser empieza null para evitar mismatch SSR/cliente (localStorage no existe en servidor)
+  const [localUser,      setLocalUser]      = useState<import('@/lib/auth').StoredUser | null>(null);
+  const [ready,          setReady]          = useState(false);
   const [activeTab,      setActiveTab]      = useState<'casos' | 'avistamientos' | 'importaciones'>('casos');
   const [editingProfile, setEditingProfile] = useState(false);
 
@@ -266,8 +267,14 @@ export default function PerfilPage() {
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Solo en cliente: leer localStorage una vez montado
   useEffect(() => {
-    if (!isLoggedIn()) setShowAuthModal(true);
+    const user = getUser();
+    if (user && isLoggedIn()) {
+      setLocalUser(user);
+    }
+    // si no hay user → localUser queda null, se muestra AuthModal
+    setReady(true);
   }, []);
 
   const { data: casesData, isLoading: casesLoading, error: casesError } = useSWR(
@@ -290,22 +297,24 @@ export default function PerfilPage() {
     } }>,
   );
 
+  // Mientras leemos localStorage mostramos spinner
+  if (!ready) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="w-8 h-8 border-4 border-brand-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // No logueado → modal de auth
   if (!localUser) {
     return (
-      <>
-        <div className="flex flex-col items-center justify-center min-h-screen gap-4 px-4">
-          <p className="text-gray-500 text-sm">Iniciando sesión…</p>
-        </div>
-        {showAuthModal && (
-          <AuthModal
-            onSuccess={() => {
-              setLocalUser(getUser());
-              setShowAuthModal(false);
-            }}
-            onClose={() => router.replace('/')}
-          />
-        )}
-      </>
+      <AuthModal
+        onSuccess={() => {
+          setLocalUser(getUser());
+        }}
+        onClose={() => router.replace('/')}
+      />
     );
   }
 
