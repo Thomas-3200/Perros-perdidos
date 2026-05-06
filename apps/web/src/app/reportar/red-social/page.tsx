@@ -2,22 +2,23 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileText, Image as ImageIcon, Sparkles, ChevronLeft, Check, Loader2, AlertTriangle } from 'lucide-react';
+import { FileText, Image as ImageIcon, Sparkles, ChevronLeft, Check, Loader2, AlertTriangle, XCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { isLoggedIn } from '@/lib/auth';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { PhotoPicker } from '@/components/ui/PhotoPicker';
 import clsx from 'clsx';
 
-type InputMode = 'image' | 'text';
+type InputMode   = 'image' | 'text';
+type ResultState = 'processed' | 'rejected' | 'pending' | null;
 
 export default function ReportarRedSocialPage() {
   const router  = useRouter();
-  const [mode,    setMode]    = useState<InputMode>('image');
-  const [text,    setText]    = useState('');
-  const [image,   setImage]   = useState<File | null>(null);
+  const [mode,      setMode]      = useState<InputMode>('image');
+  const [text,      setText]      = useState('');
+  const [image,     setImage]     = useState<File | null>(null);
   const [loading,   setLoading]   = useState(false);
-  const [done,      setDone]      = useState(false);
+  const [result,    setResult]    = useState<ResultState>(null);
   const [error,     setError]     = useState('');
   const [showAuth,  setShowAuth]  = useState(false);
 
@@ -26,15 +27,20 @@ export default function ReportarRedSocialPage() {
     setLoading(true);
     setError('');
     try {
+      let res: { aiProcessed?: boolean; data?: { status?: string } } = {};
+
       if (mode === 'image' && image) {
         const fd = new FormData();
         fd.append('files', image);
         fd.append('sourceType', 'screenshot');
-        await api.ingest.submitImage(fd);
+        res = await api.ingest.submitImage(fd) as typeof res;
       } else if (mode === 'text') {
-        await api.ingest.submitText(text);
+        res = await api.ingest.submitText(text) as typeof res;
       }
-      setDone(true);
+
+      // Determinar el resultado real según la respuesta de la API
+      const status = (res?.data as { status?: string })?.status ?? 'pending';
+      setResult(status as ResultState);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al enviar');
     } finally {
@@ -49,33 +55,79 @@ export default function ReportarRedSocialPage() {
 
   const canSubmit = (mode === 'image' && image) || (mode === 'text' && text.trim().length > 10);
 
-  /* ── Pantalla de éxito ────────────────────────────────────────────────── */
-  if (done) {
+  /* ── Pantalla de resultado ────────────────────────────────────────────────── */
+  if (result !== null) {
+    const isSuccess = result === 'processed';
+    const isRejected = result === 'rejected';
+
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
         <div className="max-w-md w-full text-center space-y-5">
-          <div className="w-20 h-20 bg-hope-50 rounded-full flex items-center justify-center mx-auto">
-            <Check className="w-10 h-10 text-hope-500" />
+          {/* Ícono */}
+          <div className={clsx(
+            'w-20 h-20 rounded-full flex items-center justify-center mx-auto',
+            isSuccess  ? 'bg-green-100' : isRejected ? 'bg-yellow-50' : 'bg-brand-50',
+          )}>
+            {isSuccess  ? <Check     className="w-10 h-10 text-green-500" /> :
+             isRejected ? <AlertTriangle className="w-10 h-10 text-yellow-500" /> :
+                          <Loader2  className="w-10 h-10 text-brand-500 animate-spin" />}
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">¡Gracias por ayudar! 🐾</h2>
-          <p className="text-gray-500 leading-relaxed">
-            La IA está procesando la información. En unos segundos va a aparecer como un nuevo
-            avistamiento en la sección <strong className="text-gray-700">Avistados</strong>.
+
+          {/* Título */}
+          <h2 className="text-2xl font-bold text-gray-900">
+            {isSuccess  ? '¡Gracias por ayudar! 🐾' :
+             isRejected ? 'No pudimos extraer datos' :
+                          'Procesando…'}
+          </h2>
+
+          {/* Descripción */}
+          <p className="text-gray-500 leading-relaxed text-sm">
+            {isSuccess
+              ? 'La IA analizó el contenido y creó un avistamiento automáticamente. Podés verlo en la sección Avistados.'
+              : isRejected
+                ? 'La IA no encontró suficiente información sobre un perro perdido en el contenido. Probá con una imagen más clara o pegá el texto completo del post.'
+                : 'Tu contenido fue recibido y está siendo procesado. Revisá Avistados en unos minutos.'}
           </p>
-          <div className="bg-brand-50 rounded-2xl px-4 py-3 text-left border border-brand-100">
-            <p className="text-brand-700 text-xs font-medium">¿Qué pasa después?</p>
-            <ul className="text-brand-600 text-xs mt-1.5 space-y-1">
-              <li>✅ La IA extrae los datos del post automáticamente</li>
-              <li>✅ Se cruza con los casos de perros perdidos activos</li>
-              <li>✅ Si hay coincidencia, el dueño recibe una notificación</li>
-            </ul>
-          </div>
+
+          {/* Detalle si fue exitoso */}
+          {isSuccess && (
+            <div className="bg-green-50 rounded-2xl px-4 py-3 text-left border border-green-100">
+              <p className="text-green-700 text-xs font-medium">¿Qué hizo la IA?</p>
+              <ul className="text-green-600 text-xs mt-1.5 space-y-1">
+                <li>✅ Extrajo descripción, ubicación y datos del perro</li>
+                <li>✅ Creó un avistamiento en la plataforma</li>
+                <li>✅ Lo cruzó contra los casos activos de perros perdidos</li>
+              </ul>
+            </div>
+          )}
+
+          {/* Sugerencia si fue rechazado */}
+          {isRejected && (
+            <div className="bg-yellow-50 rounded-2xl px-4 py-3 text-left border border-yellow-100">
+              <p className="text-yellow-700 text-xs font-medium">Consejos para mejores resultados:</p>
+              <ul className="text-yellow-600 text-xs mt-1.5 space-y-1">
+                <li>📸 Usá capturas nítidas donde se lea bien el texto del post</li>
+                <li>📝 O pegá el texto completo del post directamente</li>
+                <li>🐶 Asegurate de que el post hable de un perro perdido o encontrado</li>
+              </ul>
+            </div>
+          )}
+
+          {/* Botones */}
           <div className="space-y-3">
-            <button onClick={() => router.push('/avistamientos')} className="btn-primary w-full">
-              Ver en Avistados →
+            {isSuccess && (
+              <button onClick={() => router.push('/avistamientos')} className="btn-primary w-full">
+                Ver en Avistados →
+              </button>
+            )}
+            <button
+              onClick={() => { setResult(null); setImage(null); setText(''); }}
+              className={isSuccess ? 'btn-secondary w-full' : 'btn-primary w-full'}
+            >
+              {isRejected ? 'Intentar de nuevo' : 'Reportar otro caso'}
             </button>
-            <button onClick={() => router.push('/reportar/red-social')} className="btn-secondary w-full">
-              Reportar otro caso
+            <button onClick={() => router.push('/')} className="btn-secondary w-full text-gray-500">
+              Volver al inicio
             </button>
           </div>
         </div>
@@ -83,7 +135,7 @@ export default function ReportarRedSocialPage() {
     );
   }
 
-  /* ── Formulario ───────────────────────────────────────────────────────── */
+  /* ── Formulario ───────────────────────────────────────────────────────────── */
   return (
     <div className="min-h-screen bg-gray-50">
       {showAuth && (
@@ -126,7 +178,6 @@ export default function ReportarRedSocialPage() {
                 : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300',
             )}
           >
-            {/* Badge recomendado */}
             <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[10px] bg-hope-500 text-white font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
               ⭐ Recomendado
             </span>
@@ -156,15 +207,21 @@ export default function ReportarRedSocialPage() {
               Sacá captura de pantalla del post de Facebook, WhatsApp o Instagram y subila acá
             </p>
             {image && (
-              <div className="rounded-2xl overflow-hidden border border-gray-200">
+              <div className="relative rounded-2xl overflow-hidden border border-gray-200">
                 <img
                   src={URL.createObjectURL(image)}
                   alt="preview"
                   className="w-full max-h-64 object-contain bg-gray-50"
                 />
+                <button
+                  onClick={() => setImage(null)}
+                  className="absolute top-2 right-2 bg-white/90 rounded-full p-1 shadow"
+                >
+                  <XCircle className="w-5 h-5 text-gray-500" />
+                </button>
               </div>
             )}
-            <PhotoPicker onFile={f => setImage(f)} />
+            {!image && <PhotoPicker onFile={f => setImage(f)} />}
           </div>
         )}
 
@@ -194,15 +251,26 @@ export default function ReportarRedSocialPage() {
           </p>
         </div>
 
+        {/* Aviso: puede tardar hasta 20 segundos */}
+        {loading && (
+          <div className="bg-brand-50 border border-brand-100 rounded-xl px-4 py-3 flex items-center gap-3">
+            <Loader2 className="w-5 h-5 text-brand-500 animate-spin shrink-0" />
+            <div>
+              <p className="text-brand-700 text-sm font-semibold">La IA está analizando tu imagen…</p>
+              <p className="text-brand-600 text-xs mt-0.5">Esto puede tardar hasta 20 segundos. No cierres la pantalla.</p>
+            </div>
+          </div>
+        )}
+
         {error && <div className="bg-red-50 text-red-600 rounded-xl p-3 text-sm">{error}</div>}
 
         <button
           onClick={handleSubmit}
           disabled={loading || !canSubmit}
-          className="btn-primary w-full flex items-center justify-center gap-2 py-4 text-base"
+          className="btn-primary w-full flex items-center justify-center gap-2 py-4 text-base disabled:opacity-50"
         >
           {loading
-            ? <><Loader2 className="w-5 h-5 animate-spin" /> Enviando a la IA…</>
+            ? <><Loader2 className="w-5 h-5 animate-spin" /> Analizando con IA…</>
             : <><Sparkles className="w-5 h-5" /> Enviar a la IA</>
           }
         </button>

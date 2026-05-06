@@ -14,4 +14,5 @@ services:
         value: 0.0.0.0
       # Las siguientes variables se configuran en el dashboard de Render:
       # DATABASE_URL, REDIS_URL, JWT_SECRET, CORS_ORIGIN, API_BASE_URL,
-      # CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
+      # CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET,
+      # ANTHROPIC_API_KEY   ← REQUERIDA para análisis de screenshots con IA

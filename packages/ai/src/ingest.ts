@@ -15,6 +15,12 @@ import type { ExtractedCaseData } from '@perros/shared';
 
 let _anthropic: Anthropic | null = null;
 const getAnthropic = () => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error(
+      'ANTHROPIC_API_KEY no está configurada. ' +
+      'Agregala en las variables de entorno de Render (Dashboard → Environment).'
+    );
+  }
   if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   return _anthropic;
 };
@@ -53,27 +59,36 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
     where: { id: importedCaseId },
   });
 
+  console.log(`[ingest] Iniciando análisis de caso ${importedCaseId} (tipo: ${imported.sourceType})`);
+
   let extractedData: ExtractedCaseData;
 
   try {
-    const claude = getAnthropic();
+    const claude = getAnthropic(); // lanza si ANTHROPIC_API_KEY no está
 
     if (imported.sourceType === 'screenshot' || imported.sourceType === 'photo') {
       // ── Imagen/screenshot → Claude Vision con OCR ──────────────────────────
 
       // Descargar la imagen desde Cloudinary como base64
       const imageUrl = imported.rawInput;
-      const imageRes = await fetch(imageUrl);
-      if (!imageRes.ok) throw new Error(`No se pudo descargar la imagen: ${imageRes.status}`);
+      console.log(`[ingest] Descargando imagen: ${imageUrl.substring(0, 80)}...`);
 
-      const buffer = await imageRes.arrayBuffer();
-      const base64 = Buffer.from(buffer).toString('base64');
+      const imageRes = await fetch(imageUrl, {
+        headers: { 'Accept': 'image/*' },
+        signal: AbortSignal.timeout(20_000), // 20s timeout para la descarga
+      });
+      if (!imageRes.ok) throw new Error(`No se pudo descargar la imagen: ${imageRes.status} ${imageRes.statusText}`);
+
+      const buffer      = await imageRes.arrayBuffer();
+      const base64      = Buffer.from(buffer).toString('base64');
       const contentType = imageRes.headers.get('content-type') ?? 'image/jpeg';
-      const mediaType = (contentType.split(';')[0].trim()) as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+      const mediaType   = (contentType.split(';')[0].trim()) as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
+      console.log(`[ingest] Imagen descargada (${(buffer.byteLength / 1024).toFixed(0)} KB, ${mediaType}). Llamando a Claude...`);
 
       const response = await claude.messages.create({
         model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 800,
+        max_tokens: 1024,
         messages: [
           {
             role: 'user',
@@ -95,8 +110,9 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
         ],
       });
 
-      const raw = response.content[0]?.type === 'text' ? response.content[0].text : '{}';
+      const raw     = response.content[0]?.type === 'text' ? response.content[0].text : '{}';
       const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
+      console.log(`[ingest] Respuesta de Claude (primeros 200 chars): ${cleaned.substring(0, 200)}`);
       extractedData = mapExtracted(JSON.parse(cleaned));
 
     } else {
@@ -105,17 +121,20 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
         ? `Se compartió este link de red social: ${imported.rawInput}\n\nNo puedes acceder a la URL, pero intentá inferir lo que puedas del propio link (nombre del grupo, palabras clave, etc.).`
         : imported.rawInput;
 
+      console.log(`[ingest] Procesando texto (${content.length} chars). Llamando a Claude...`);
+
       const response = await claude.messages.create({
         model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 800,
+        max_tokens: 1024,
         system: EXTRACTION_PROMPT,
         messages: [
           { role: 'user', content },
         ],
       });
 
-      const raw = response.content[0]?.type === 'text' ? response.content[0].text : '{}';
+      const raw     = response.content[0]?.type === 'text' ? response.content[0].text : '{}';
       const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
+      console.log(`[ingest] Respuesta de Claude (primeros 200 chars): ${cleaned.substring(0, 200)}`);
       extractedData = mapExtracted(JSON.parse(cleaned));
     }
 
@@ -123,6 +142,8 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
     const isScreenshot = imported.sourceType === 'screenshot' || imported.sourceType === 'photo';
     const threshold    = isScreenshot ? 0.1 : 0.3;
     const isUsable     = extractedData.confidence > threshold;
+
+    console.log(`[ingest] Confianza: ${extractedData.confidence} (umbral: ${threshold}) → ${isUsable ? 'USABLE' : 'RECHAZADO'}`);
 
     await prisma.importedSocialCase.update({
       where: { id: importedCaseId },
@@ -132,8 +153,7 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
       },
     });
 
-    // ── Auto-crear avistamiento SIEMPRE que haya info útil ───────────────────
-    // Antes se bloqueaba si no había ciudad/coords — ahora siempre se crea
+    // ── Auto-crear avistamiento siempre que haya info útil ───────────────────
     if (isUsable) {
       const loc       = extractedData.location;
       const hasCoords = loc && loc.lat !== 0 && loc.lng !== 0;
@@ -141,12 +161,12 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
       // Fotos: screenshots/photos ya están en Cloudinary
       const photos = isScreenshot ? [imported.rawInput] : [];
 
-      // Coordenadas: usar las de la IA, o fallback a centro de Argentina si no hay
+      // Coordenadas: usar las de la IA, o fallback a centro de Argentina
       const lat = hasCoords ? loc!.lat : -38.4161;
       const lng = hasCoords ? loc!.lng : -63.6167;
 
       // Ciudad: usar la extraída o marcar como "Sin ubicación"
-      const city = loc?.city ?? (hasCoords ? undefined : 'Sin ubicación especificada');
+      const city = loc?.city ?? 'Sin ubicación especificada';
 
       const sighting = await prisma.sighting.create({
         data: {
@@ -155,7 +175,7 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
           locationLng:     lng,
           locationAddress: loc?.address,
           locationCity:    city,
-          seenAt:          imported.createdAt, // siempre usar fecha de hoy, no lo que diga el post
+          seenAt:          imported.createdAt, // siempre fecha actual, nunca la del post antiguo
           photos,
           description:     extractedData.description,
           source:          'social_import',
@@ -163,17 +183,17 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
         },
       });
 
-      console.log(`[ingest] Avistamiento creado: ${sighting.id} (confianza: ${extractedData.confidence}, ciudad: ${city ?? 'sin ciudad'})`);
+      console.log(`[ingest] ✅ Avistamiento creado: ${sighting.id} (ciudad: ${city}, confianza: ${extractedData.confidence})`);
     }
 
-    console.log(`[ingest] Caso ${importedCaseId} procesado con Claude. Confianza: ${extractedData.confidence}`);
-
   } catch (err) {
-    console.error(`[ingest] Error procesando caso ${importedCaseId}:`, err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[ingest] ❌ Error procesando caso ${importedCaseId}: ${msg}`);
     await prisma.importedSocialCase.update({
       where: { id: importedCaseId },
-      data: { status: 'rejected' },
+      data:  { status: 'rejected' },
     });
+    throw err; // re-lanzar para que la ruta HTTP maneje el error
   }
 }
 
