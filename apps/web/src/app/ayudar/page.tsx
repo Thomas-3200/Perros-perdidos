@@ -57,7 +57,7 @@ export default function AyudarPage() {
           <div>
             <h2 className="font-semibold text-gray-800 text-sm">Reportar un avistamiento</h2>
             <p className="text-gray-500 text-xs mt-0.5">
-              Viste un perro suelto? Sube una foto y marcá la ubicación.
+              ¿Viste un perro perdido en la calle? Subí una foto y marcá la ubicación.
             </p>
           </div>
         </Link>

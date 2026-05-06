@@ -162,7 +162,7 @@ export default function HomePage() {
                          hover:bg-brand-800 transition-colors shadow-lg"
             >
               <MapPin className="w-7 h-7" />
-              <span className="text-sm text-center">Vi un perro<br />suelto</span>
+              <span className="text-sm text-center">Vi un perro<br />perdido</span>
             </Link>
           </div>
 

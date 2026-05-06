@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Camera, MapPin, ChevronLeft, Check, LocateFixed, Loader2, Heart, Clock,
@@ -11,30 +11,38 @@ import { AuthModal } from '@/components/auth/AuthModal';
 import { PhotoPicker } from '@/components/ui/PhotoPicker';
 
 const DOG_STATUS_OPTIONS = [
-  { value: 'still_there', label: '📍 Sigue ahí',  desc: 'El perro todavía está en ese lugar' },
-  { value: 'gone',        label: '🏃 Ya se fue',  desc: 'Vi al perro pero ya no está' },
-  { value: 'retained',   label: '🏠 Lo tengo yo', desc: 'Tengo al perro conmigo o lo guardé' },
-  { value: 'injured',    label: '🩹 Está herido', desc: 'El perro parece estar lastimado' },
-  { value: 'unknown',    label: '❓ No sé',         desc: 'No puedo confirmarlo' },
+  { value: 'still_there', label: '📍 Sigue ahí',   desc: 'El perro todavía está en ese lugar' },
+  { value: 'gone',        label: '🏃 Ya se fue',   desc: 'Vi al perro pero ya no está' },
+  { value: 'retained',    label: '🏠 Lo tengo yo', desc: 'Tengo al perro conmigo o lo guardé' },
+  { value: 'injured',     label: '🩹 Está herido',  desc: 'El perro parece estar lastimado' },
+  { value: 'unknown',     label: '❓ No sé',         desc: 'No puedo confirmarlo' },
 ];
 
-/* ── Opciones de tiempo simplificadas ──────────────────────────────────── */
-function buildTimeOptions() {
-  const now = new Date();
-  const h1  = new Date(now.getTime() - 1 * 3_600_000);
-  const h3  = new Date(now.getTime() - 3 * 3_600_000);
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  yesterday.setHours(12, 0, 0, 0);
+/* ── Opciones de tiempo con claves fijas ────────────────────────────────── */
+type TimeKey = 'now' | '1h' | '2h' | 'yesterday' | 'custom';
 
-  return [
-    { label: '🟢 Ahora mismo',    value: now.toISOString() },
-    { label: '🕐 Hace ~1 hora',   value: h1.toISOString() },
-    { label: '🕒 Hace ~3 horas',  value: h3.toISOString() },
-    { label: '📅 Hoy',            value: new Date(now.setHours(9, 0, 0, 0)).toISOString() },
-    { label: '📅 Ayer',           value: yesterday.toISOString() },
-    { label: '📆 Otro momento',   value: 'custom' },
-  ];
+const TIME_OPTIONS: { key: TimeKey; label: string }[] = [
+  { key: 'now',       label: '🟢 Ahora mismo'        },
+  { key: '1h',        label: '🕐 Hace 1 hora aprox'  },
+  { key: '2h',        label: '🕒 Más de 2 horas'     },
+  { key: 'yesterday', label: '📅 Ayer'                },
+  { key: 'custom',    label: '📆 Otro momento'        },
+];
+
+function timeKeyToISO(key: TimeKey, customDate: string): string {
+  const now = new Date();
+  switch (key) {
+    case 'now':       return now.toISOString();
+    case '1h':        return new Date(now.getTime() - 3_600_000).toISOString();
+    case '2h':        return new Date(now.getTime() - 7_200_000).toISOString();
+    case 'yesterday': {
+      const y = new Date(now);
+      y.setDate(y.getDate() - 1);
+      y.setHours(12, 0, 0, 0);
+      return y.toISOString();
+    }
+    case 'custom':    return new Date(customDate).toISOString();
+  }
 }
 
 /* ── Reverse geocoding con Nominatim (gratuito) ─────────────────────────── */
@@ -57,9 +65,10 @@ async function reverseGeocode(lat: number, lng: number): Promise<{ city: string;
   }
 }
 
+const TOTAL_STEPS = 3;
+
 export default function ReportarAvistamientoPage() {
   const router = useRouter();
-  const timeOptions = buildTimeOptions();
 
   const [step,       setStep]       = useState(0);
   const [photo,      setPhoto]      = useState<File | null>(null);
@@ -67,10 +76,10 @@ export default function ReportarAvistamientoPage() {
   const [lat,        setLat]        = useState('');
   const [lng,        setLng]        = useState('');
   const [city,       setCity]       = useState('');
-  const [address,    setAddress]    = useState('');
+  const [address,    setAddress]    = useState('');   // barrio / zona
+  const [exactAddr,  setExactAddr]  = useState('');   // calle y número exactos
   const [desc,       setDesc]       = useState('');
-  const [seenAt,     setSeenAt]     = useState(new Date().toISOString());
-  const [timeChoice, setTimeChoice] = useState('now');
+  const [timeKey,    setTimeKey]    = useState<TimeKey>('now');
   const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 16));
   const [loading,    setLoading]    = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
@@ -78,6 +87,24 @@ export default function ReportarAvistamientoPage() {
   const [showAuth,   setShowAuth]   = useState(false);
   const [done,       setDone]       = useState(false);
   const [locationConfirmed, setLocationConfirmed] = useState(false);
+
+  /* ── Manejo del botón back del navegador / móvil ─────────────────────── */
+  useEffect(() => {
+    if (step === 0) return; // en paso 0 el back nativo puede salir
+
+    // Empujamos un estado al historial para interceptar el back
+    window.history.pushState({ step }, '', window.location.href);
+
+    const handlePop = () => {
+      setStep(s => {
+        if (s > 0) return s - 1;
+        return s;
+      });
+    };
+
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, [step]);
 
   const geolocate = useCallback(async () => {
     if (!navigator.geolocation) {
@@ -92,14 +119,12 @@ export default function ReportarAvistamientoPage() {
         setLat(String(latitude));
         setLng(String(longitude));
 
-        // Reverse geocoding para obtener ciudad y dirección automáticamente
         const geo = await reverseGeocode(latitude, longitude);
         if (geo.city)    setCity(geo.city);
         if (geo.address) setAddress(geo.address);
 
         setLocationConfirmed(true);
         setGeoLoading(false);
-        setError('');
       },
       () => {
         setError('No se pudo obtener la ubicación. Ingresá la ciudad manualmente.');
@@ -109,22 +134,27 @@ export default function ReportarAvistamientoPage() {
     );
   }, []);
 
-  function handleTimeChoice(val: string) {
-    setTimeChoice(val);
-    if (val !== 'custom') setSeenAt(val);
+  function goNext() {
+    setError('');
+    setStep(s => s + 1);
   }
 
   async function doSubmit() {
     setLoading(true);
     setError('');
     try {
+      const seenAtISO = timeKeyToISO(timeKey, customDate);
+
+      // Armar descripción de dirección completa para la API
+      const fullAddress = [exactAddr, address].filter(Boolean).join(', ');
+
       const fd = new FormData();
       if (photo) fd.append('files', photo);
       fd.append('locationLat',     lat || '-34.6037');
       fd.append('locationLng',     lng || '-58.3816');
-      fd.append('locationAddress', address);
+      fd.append('locationAddress', fullAddress);
       fd.append('locationCity',    city);
-      fd.append('seenAt',          timeChoice === 'custom' ? new Date(customDate).toISOString() : seenAt);
+      fd.append('seenAt',          seenAtISO);
       fd.append('dogStatus',       status);
       fd.append('description',     desc);
 
@@ -157,7 +187,8 @@ export default function ReportarAvistamientoPage() {
           <button onClick={() => router.push('/')} className="btn-primary w-full">
             Volver al inicio
           </button>
-          <button onClick={() => router.push('/reportar/avistamiento')} className="btn-secondary w-full">
+          <button onClick={() => { setDone(false); setStep(0); setPhoto(null); setCity(''); setAddress(''); setExactAddr(''); setDesc(''); setTimeKey('now'); setLocationConfirmed(false); }}
+            className="btn-secondary w-full">
             Reportar otro avistamiento
           </button>
         </div>
@@ -185,7 +216,7 @@ export default function ReportarAvistamientoPage() {
         </button>
         <div>
           <h1 className="font-bold text-gray-900">Reportar avistamiento</h1>
-          <p className="text-xs text-gray-400">Paso {step + 1} de 3</p>
+          <p className="text-xs text-gray-400">Paso {step + 1} de {TOTAL_STEPS}</p>
         </div>
       </header>
 
@@ -193,7 +224,7 @@ export default function ReportarAvistamientoPage() {
       <div className="w-full h-1 bg-gray-200">
         <div
           className="h-1 bg-brand-500 transition-all duration-300"
-          style={{ width: `${((step + 1) / 3) * 100}%` }}
+          style={{ width: `${((step + 1) / TOTAL_STEPS) * 100}%` }}
         />
       </div>
 
@@ -222,7 +253,7 @@ export default function ReportarAvistamientoPage() {
 
             <PhotoPicker onFile={f => setPhoto(f)} />
 
-            <button onClick={() => setStep(1)} className="btn-primary w-full py-4">
+            <button onClick={goNext} className="btn-primary w-full py-4">
               {photo ? 'Siguiente →' : 'Continuar sin foto →'}
             </button>
           </div>
@@ -241,7 +272,7 @@ export default function ReportarAvistamientoPage() {
 
             {/* ── Ubicación ── */}
             <div className="space-y-3">
-              {/* GPS primero, grande y llamativo */}
+              {/* GPS primero */}
               <button
                 type="button"
                 onClick={geolocate}
@@ -262,7 +293,7 @@ export default function ReportarAvistamientoPage() {
                 )}
               </button>
 
-              {/* Mapa mini de confirmación (solo cuando hay GPS) */}
+              {/* Mapa mini de confirmación */}
               {locationConfirmed && lat && lng && (
                 <div className="rounded-2xl overflow-hidden border border-green-200 bg-green-50">
                   <iframe
@@ -283,21 +314,36 @@ export default function ReportarAvistamientoPage() {
 
               <p className="text-xs text-gray-400 text-center">— o ingresá la dirección manualmente —</p>
 
+              {/* Ciudad */}
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">
                   Ciudad <span className="text-red-400">*</span>
                 </label>
                 <input
                   className="input"
-                  placeholder="Ej: Buenos Aires, Córdoba..."
+                  placeholder="Ej: Buenos Aires, Córdoba, Rosario..."
                   value={city}
                   onChange={e => setCity(e.target.value)}
                 />
               </div>
 
+              {/* Dirección exacta */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">
+                  Dirección exacta
+                </label>
+                <input
+                  className="input"
+                  placeholder="Ej: Av. Corrientes 1234, esquina Larrea"
+                  value={exactAddr}
+                  onChange={e => setExactAddr(e.target.value)}
+                />
+              </div>
+
+              {/* Barrio / referencia */}
               <input
                 className="input"
-                placeholder="Barrio o referencia (ej: Palermo, esquina Thames)"
+                placeholder="Barrio o referencia (ej: Palermo, frente a la plaza)"
                 value={address}
                 onChange={e => setAddress(e.target.value)}
               />
@@ -309,15 +355,15 @@ export default function ReportarAvistamientoPage() {
                 <Clock className="w-4 h-4 text-brand-500" /> ¿Cuándo lo viste?
               </label>
               <div className="grid grid-cols-2 gap-2">
-                {timeOptions.map(opt => (
+                {TIME_OPTIONS.map(opt => (
                   <button
-                    key={opt.value}
+                    key={opt.key}
                     type="button"
-                    onClick={() => handleTimeChoice(opt.value)}
-                    className={`py-2.5 px-3 rounded-xl border-2 text-sm font-medium text-left transition-colors ${
-                      (opt.value === 'custom' ? timeChoice === 'custom' : seenAt === opt.value && timeChoice !== 'custom')
-                        ? 'border-brand-500 bg-brand-50 text-brand-700'
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                    onClick={() => setTimeKey(opt.key)}
+                    className={`py-3 px-3 rounded-xl border-2 text-sm font-medium text-left transition-all ${
+                      timeKey === opt.key
+                        ? 'border-brand-500 bg-brand-50 text-brand-700 shadow-sm'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-brand-300 hover:bg-brand-50/50'
                     }`}
                   >
                     {opt.label}
@@ -325,12 +371,13 @@ export default function ReportarAvistamientoPage() {
                 ))}
               </div>
 
-              {/* Input de fecha solo si eligió "Otro momento" */}
-              {timeChoice === 'custom' && (
+              {/* Picker sólo si eligió "Otro momento" */}
+              {timeKey === 'custom' && (
                 <input
-                  className="input mt-2"
+                  className="input mt-1"
                   type="datetime-local"
                   value={customDate}
+                  max={new Date().toISOString().slice(0, 16)}
                   onChange={e => setCustomDate(e.target.value)}
                 />
               )}
@@ -347,10 +394,10 @@ export default function ReportarAvistamientoPage() {
                     key={opt.value}
                     type="button"
                     onClick={() => setStatus(opt.value)}
-                    className={`w-full text-left p-3 rounded-xl border-2 transition-colors ${
+                    className={`w-full text-left p-3 rounded-xl border-2 transition-all ${
                       status === opt.value
                         ? 'border-brand-500 bg-brand-50'
-                        : 'border-gray-200 bg-white hover:border-gray-300'
+                        : 'border-gray-200 bg-white hover:border-brand-300'
                     }`}
                   >
                     <div className="font-semibold text-sm">{opt.label}</div>
@@ -365,7 +412,7 @@ export default function ReportarAvistamientoPage() {
             )}
 
             <button
-              onClick={() => setStep(2)}
+              onClick={goNext}
               disabled={!city}
               className="btn-primary w-full py-4 disabled:opacity-50"
             >
@@ -383,10 +430,19 @@ export default function ReportarAvistamientoPage() {
             </p>
             <textarea
               className="input resize-none h-32"
-              placeholder="Color, tamaño, collar, si estaba asustado o manso, si tenía heridas..."
+              placeholder="Color, tamaño, collar, si estaba asustado o manso, si tenía heridas, si tenía nombre en la chapa..."
               value={desc}
               onChange={e => setDesc(e.target.value)}
             />
+
+            {/* Resumen de lo que se va a enviar */}
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-1 text-sm">
+              <p className="font-semibold text-gray-700 text-xs uppercase tracking-wide mb-2">Resumen</p>
+              {city && <p className="text-gray-600">📍 {[exactAddr, address, city].filter(Boolean).join(', ')}</p>}
+              <p className="text-gray-600">🕐 {TIME_OPTIONS.find(o => o.key === timeKey)?.label ?? 'No especificado'}</p>
+              <p className="text-gray-600">🐕 {DOG_STATUS_OPTIONS.find(o => o.value === status)?.label ?? 'No especificado'}</p>
+              {photo && <p className="text-gray-600">📸 Foto adjunta</p>}
+            </div>
 
             {error && (
               <div className="bg-red-50 text-red-600 rounded-xl p-3 text-sm">{error}</div>
@@ -404,11 +460,11 @@ export default function ReportarAvistamientoPage() {
             </button>
 
             <button
-              onClick={handleSubmit}
+              onClick={() => setStep(1)}
               disabled={loading}
-              className="btn-secondary w-full text-sm text-gray-500"
+              className="btn-secondary w-full text-sm"
             >
-              Enviar sin descripción
+              ← Volver y editar
             </button>
           </div>
         )}
