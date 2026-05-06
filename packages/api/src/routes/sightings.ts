@@ -117,6 +117,28 @@ export async function sightingsRoutes(app: FastifyInstance) {
     };
   });
 
+  // ── GET /mine — Mis avistamientos ─────────────────────────────────────────
+  // IMPORTANTE: registrar /mine ANTES de /:id para evitar conflictos de routing
+  app.get('/mine', { preHandler: requireAuth }, async (req) => {
+    const { sub } = req.user as { sub: string };
+    const query = z.object({
+      page:  z.coerce.number().default(1),
+      limit: z.coerce.number().default(20),
+    }).parse(req.query);
+
+    const [sightings, total] = await Promise.all([
+      prisma.sighting.findMany({
+        where: { reporterId: sub },
+        orderBy: { createdAt: 'desc' },
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+      prisma.sighting.count({ where: { reporterId: sub } }),
+    ]);
+
+    return { success: true, data: sightings, meta: { total, page: query.page, limit: query.limit } };
+  });
+
   // ── GET /:id — Detalle de avistamiento ────────────────────────────────────
   app.get('/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -136,27 +158,6 @@ export async function sightingsRoutes(app: FastifyInstance) {
     });
     if (!sighting) return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Avistamiento no encontrado' } });
     return { success: true, data: sighting };
-  });
-
-  // ── GET /mine — Mis avistamientos ─────────────────────────────────────────
-  app.get('/mine', { preHandler: requireAuth }, async (req) => {
-    const { sub } = req.user as { sub: string };
-    const query = z.object({
-      page:  z.coerce.number().default(1),
-      limit: z.coerce.number().default(20),
-    }).parse(req.query);
-
-    const [sightings, total] = await Promise.all([
-      prisma.sighting.findMany({
-        where: { reporterId: sub },
-        orderBy: { createdAt: 'desc' },
-        skip: (query.page - 1) * query.limit,
-        take: query.limit,
-      }),
-      prisma.sighting.count({ where: { reporterId: sub } }),
-    ]);
-
-    return { success: true, data: sightings, meta: { total, page: query.page, limit: query.limit } };
   });
 
   // ── DELETE /:id — Eliminar avistamiento (solo el autor) ───────────────────
