@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Search, MapPin, Clock, X, SlidersHorizontal } from 'lucide-react';
@@ -34,7 +34,7 @@ function daysAgo(dateStr: string): string {
 
 export default function BuscarPage() {
   const [city,    setCity]    = useState('');
-  const [query,   setQuery]   = useState('');   // city committed on search
+  const [query,   setQuery]   = useState('');
   const [page,    setPage]    = useState(1);
   const [results, setResults] = useState<CaseItem[] | null>(null);
   const [total,   setTotal]   = useState(0);
@@ -42,6 +42,9 @@ export default function BuscarPage() {
   const [error,   setError]   = useState('');
 
   const LIMIT = 12;
+
+  // Auto-carga todos los casos al entrar a la página
+  useEffect(() => { search('', 1); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const search = useCallback(async (cityVal: string, pageVal: number) => {
     setLoading(true);
@@ -122,8 +125,8 @@ export default function BuscarPage() {
         </button>
       </form>
 
-      {/* Acceso rápido — ciudades populares */}
-      {results === null && (
+      {/* Acceso rápido — ciudades populares (solo antes de que el usuario filtre) */}
+      {!query && (
         <div className="space-y-3">
           <p className="text-xs text-gray-400 flex items-center gap-1">
             <SlidersHorizontal className="w-3.5 h-3.5" /> Búsquedas frecuentes

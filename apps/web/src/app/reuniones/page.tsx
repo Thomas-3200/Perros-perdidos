@@ -69,8 +69,14 @@ export default function ReunionesPage() {
 
         {/* Error */}
         {error && (
-          <div className="card text-center py-10 text-gray-500">
-            No se pudo cargar. Intentá de nuevo.
+          <div className="card text-center py-10 space-y-3">
+            <p className="text-gray-500">No se pudo cargar.</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="btn-secondary text-sm"
+            >
+              Reintentar
+            </button>
           </div>
         )}
 
@@ -131,7 +137,7 @@ export default function ReunionesPage() {
                     <MapPin className="w-3.5 h-3.5" /> {s.lostCase.lastSeenCity}
                   </span>
                 )}
-                <span>{daysAgo(s.lostCase.lastSeenAt)}</span>
+                <span>Reunificado {daysAgo(s.publishedAt ?? s.lostCase.lastSeenAt)}</span>
               </div>
               {excerpt && (
                 <p className="text-sm text-gray-600 leading-relaxed">{excerpt}</p>
