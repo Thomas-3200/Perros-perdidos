@@ -13,6 +13,11 @@ import Anthropic from '@anthropic-ai/sdk';
 import prisma from '@perros/db';
 import type { ExtractedCaseData } from '@perros/shared';
 
+// Modelo configurable por env var — si el modelo por defecto da 404,
+// podés cambiarlo en Render → Environment → ANTHROPIC_MODEL
+const DEFAULT_MODEL = 'claude-3-haiku-20240307';
+const getModel = () => process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL;
+
 let _anthropic: Anthropic | null = null;
 const getAnthropic = () => {
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -87,7 +92,7 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
       console.log(`[ingest] Imagen descargada (${(buffer.byteLength / 1024).toFixed(0)} KB, ${mediaType}). Llamando a Claude...`);
 
       const response = await claude.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: getModel(),
         max_tokens: 1024,
         messages: [
           {
@@ -124,7 +129,7 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
       console.log(`[ingest] Procesando texto (${content.length} chars). Llamando a Claude...`);
 
       const response = await claude.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: getModel(),
         max_tokens: 1024,
         system: EXTRACTION_PROMPT,
         messages: [
