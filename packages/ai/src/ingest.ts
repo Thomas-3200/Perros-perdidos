@@ -87,7 +87,7 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
       console.log(`[ingest] Imagen descargada (${(buffer.byteLength / 1024).toFixed(0)} KB, ${mediaType}). Llamando a Claude...`);
 
       const response = await claude.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-3-5-haiku-20241022',
         max_tokens: 1024,
         messages: [
           {
@@ -124,7 +124,7 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
       console.log(`[ingest] Procesando texto (${content.length} chars). Llamando a Claude...`);
 
       const response = await claude.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-3-5-haiku-20241022',
         max_tokens: 1024,
         system: EXTRACTION_PROMPT,
         messages: [
