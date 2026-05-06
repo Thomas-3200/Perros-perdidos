@@ -202,7 +202,7 @@ export default function ReportarPerdidoPage() {
                 <p className="text-xs text-gray-400 mt-1">JPG, PNG, HEIC — hasta 20 MB por foto</p>
               </div>
               <input
-                type="file" accept="image/*" multiple capture="environment" className="sr-only"
+                type="file" accept="image/*" multiple className="sr-only"
                 onChange={e => { set('photos', Array.from(e.target.files ?? [])); setError(''); }}
               />
             </label>

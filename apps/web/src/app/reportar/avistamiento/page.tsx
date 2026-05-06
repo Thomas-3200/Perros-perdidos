@@ -167,7 +167,6 @@ export default function ReportarAvistamientoPage() {
               <input
                 type="file"
                 accept="image/*"
-                capture="environment"
                 className="sr-only"
                 onChange={e => setPhoto(e.target.files?.[0] ?? null)}
               />
