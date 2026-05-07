@@ -218,6 +218,7 @@ export default function ReportarAvistamientoPage() {
   const [showAuth,     setShowAuth]     = useState(false);
   const [done,         setDone]         = useState(false);
   const [locationConfirmed, setLocationConfirmed] = useState(false);
+  const [anonymousContact,  setAnonymousContact]  = useState(''); // WhatsApp/teléfono opcional cuando reporta sin login
 
   /* ── Manejo del botón back del navegador / móvil ─────────────────────── */
   useEffect(() => {
@@ -315,6 +316,10 @@ export default function ReportarAvistamientoPage() {
       fd.append('seenAt',          seenAtISO);
       fd.append('dogStatus',       status);
       fd.append('description',     desc);
+      // Si no está logueado y dejó WhatsApp/teléfono opcional, lo enviamos
+      if (!isLoggedIn() && anonymousContact.trim()) {
+        fd.append('anonymousContact', anonymousContact.trim());
+      }
 
       // 3️⃣ Enviar — el servidor ya está despierto, esto debería tardar <15s
       await api.sightings.create(fd);
@@ -338,7 +343,7 @@ export default function ReportarAvistamientoPage() {
   }
 
   function handleSubmit() {
-    if (!isLoggedIn()) { setShowAuth(true); return; }
+    // Permitimos avistamientos anónimos — quien no quiera registrarse igual puede ayudar
     doSubmit();
   }
 
@@ -594,6 +599,27 @@ export default function ReportarAvistamientoPage() {
               value={desc}
               onChange={e => setDesc(e.target.value)}
             />
+
+            {/* Campo opcional de WhatsApp para usuarios sin cuenta */}
+            {!isLoggedIn() && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 space-y-2">
+                <label className="block text-sm font-semibold text-blue-900">
+                  📱 WhatsApp <span className="text-blue-500 font-normal">(opcional)</span>
+                </label>
+                <input
+                  type="tel"
+                  className="input"
+                  placeholder="+54 9 11 1234-5678"
+                  value={anonymousContact}
+                  onChange={e => setAnonymousContact(e.target.value)}
+                  inputMode="tel"
+                />
+                <p className="text-xs text-blue-700 leading-snug">
+                  Si dejás tu WhatsApp, el dueño del perro va a poder contactarte directamente. <br />
+                  No es obligatorio — podés enviar el avistamiento de forma totalmente anónima.
+                </p>
+              </div>
+            )}
 
             {/* Resumen de lo que se va a enviar */}
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-1 text-sm">

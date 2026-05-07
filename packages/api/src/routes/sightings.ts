@@ -6,7 +6,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import prisma from '@perros/db';
-import { requireAuth }    from '../lib/auth.js';
+import { requireAuth, optionalAuth } from '../lib/auth.js';
 import { uploadFile }     from '../lib/upload.js';
 import { processSighting } from '@perros/ai';
 
@@ -18,13 +18,30 @@ const CreateSightingSchema = z.object({
   seenAt:          z.string().datetime(),
   dogStatus:       z.enum(['still_there', 'gone', 'retained', 'injured', 'unknown']).default('unknown'),
   description:     z.string().optional(),
+  anonymousContact: z.string().optional(), // WhatsApp/teléfono si reporta sin login
 });
+
+// ─── Usuario "anónimo" del sistema (lazy init) ──────────────────────────────
+const ANON_EMAIL = 'anonymous@perros-perdidos.app';
+let _anonId: string | null = null;
+async function getAnonymousUserId(): Promise<string> {
+  if (_anonId) return _anonId;
+  const existing = await prisma.user.findUnique({ where: { email: ANON_EMAIL }, select: { id: true } });
+  if (existing) { _anonId = existing.id; return _anonId; }
+  const created = await prisma.user.create({
+    data: { email: ANON_EMAIL, name: 'Anónimo', role: 'helper' },
+    select: { id: true },
+  });
+  _anonId = created.id;
+  return _anonId;
+}
 
 export async function sightingsRoutes(app: FastifyInstance) {
 
-  // ── POST / — Crear avistamiento ───────────────────────────────────────────
-  app.post('/', { preHandler: requireAuth }, async (req, reply) => {
-    const { sub } = req.user as { sub: string };
+  // ── POST / — Crear avistamiento (auth opcional — permite anónimos) ────────
+  app.post('/', { preHandler: optionalAuth }, async (req, reply) => {
+    const userId = (req.user as { sub?: string } | undefined)?.sub;
+    const isAnonymous = !userId;
 
     // Parsear campos del form + archivos
     const fields: Record<string, string> = {};
@@ -51,16 +68,25 @@ export async function sightingsRoutes(app: FastifyInstance) {
       photoUrls.push(result.url);
     }
 
+    // Si es anónimo, prepender el contacto al description
+    let finalDescription = body.description ?? '';
+    if (isAnonymous && body.anonymousContact?.trim()) {
+      const contact = body.anonymousContact.trim();
+      finalDescription = `📱 Contacto del que vio: ${contact}` + (finalDescription ? `\n\n${finalDescription}` : '');
+    }
+
+    const reporterId = userId ?? await getAnonymousUserId();
+
     const sighting = await prisma.sighting.create({
       data: {
-        reporterId:      sub,
+        reporterId,
         locationLat:     body.locationLat,
         locationLng:     body.locationLng,
         locationAddress: body.locationAddress,
         locationCity:    body.locationCity,
         seenAt:          new Date(body.seenAt),
         dogStatus:       body.dogStatus,
-        description:     body.description,
+        description:     finalDescription || undefined,
         source:          'app',
         photos:          photoUrls,
       },
@@ -73,21 +99,23 @@ export async function sightingsRoutes(app: FastifyInstance) {
       });
     });
 
-    // Si el usuario no tiene teléfono, notificarle para que lo agregue
-    const reporter = await prisma.user.findUnique({
-      where:  { id: sub },
-      select: { phone: true },
-    });
-    if (!reporter?.phone) {
-      await prisma.notification.create({
-        data: {
-          userId: sub,
-          type:   'case_update',
-          title:  '📱 Agregá tu teléfono al perfil',
-          body:   'Así otros usuarios pueden contactarte por WhatsApp cuando ven tu avistamiento.',
-          data:   { path: '/perfil' },
-        },
+    // Si está logueado y no tiene teléfono, recordarle agregarlo
+    if (userId) {
+      const reporter = await prisma.user.findUnique({
+        where:  { id: userId },
+        select: { phone: true },
       });
+      if (!reporter?.phone) {
+        await prisma.notification.create({
+          data: {
+            userId,
+            type:   'case_update',
+            title:  '📱 Agregá tu teléfono al perfil',
+            body:   'Así otros usuarios pueden contactarte por WhatsApp cuando ven tu avistamiento.',
+            data:   { path: '/perfil' },
+          },
+        });
+      }
     }
 
     return reply.code(201).send({ success: true, data: sighting });
