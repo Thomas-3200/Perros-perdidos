@@ -126,11 +126,19 @@ export async function sendMatchEmail(p: MatchEmailParams): Promise<boolean> {
     });
 
     if (result.error) {
-      console.warn('[email] Resend error:', result.error);
+      const msg = (result.error as { message?: string }).message ?? JSON.stringify(result.error);
+      if (msg.toLowerCase().includes('verify a domain')) {
+        console.warn(
+          `[email] ⚠️  Email NO entregado a ${p.to}: Resend en modo testing. ` +
+          `Para enviar a otros destinatarios, verificá un dominio en https://resend.com/domains`,
+        );
+      } else {
+        console.warn(`[email] Resend error enviando a ${p.to}:`, msg);
+      }
       return false;
     }
 
-    console.log(`[email] Match email enviado a ${p.to} (id: ${result.data?.id})`);
+    console.log(`[email] ✅ Match email enviado a ${p.to} (id: ${result.data?.id})`);
     return true;
   } catch (err) {
     console.warn('[email] Falla enviando email:', err instanceof Error ? err.message : err);
