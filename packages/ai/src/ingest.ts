@@ -190,9 +190,13 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
       const attrs = extractedData.dogAttributes;
       const parts: string[] = [];
 
+      const SIZE_LABELS: Record<string, string> = {
+        small: 'pequeño', medium: 'mediano', large: 'grande', extra_large: 'muy grande',
+      };
+
       if (attrs?.breed)               parts.push(`Raza: ${attrs.breed}`);
       if (attrs?.color?.length)       parts.push(`Color: ${attrs.color.join(', ')}`);
-      if (attrs?.size)                parts.push(`Tamaño: ${{ small: 'pequeño', medium: 'mediano', large: 'grande', extra_large: 'muy grande' }[attrs.size] ?? attrs.size}`);
+      if (attrs?.size)                parts.push(`Tamaño: ${SIZE_LABELS[attrs.size] ?? attrs.size}`);
       if (extractedData.description)  parts.push(extractedData.description);
       if (extractedData.contactInfo)  parts.push(`Contacto del post: ${extractedData.contactInfo}`);
 

@@ -247,46 +247,55 @@ export default function ReportarPerdidoPage() {
     setError('');
     try {
       const lastSeenAt = timeKeyToISO(form.lastSeenTimeKey, form.lastSeenCustom);
+      const token      = typeof window !== 'undefined' ? localStorage.getItem('pp_token') ?? '' : '';
 
-      const res = await api.cases.create({
-        dog: {
-          name:        form.name.trim(),
-          breed:       form.breed.trim() || undefined,
-          color:       form.color.split(',').map(c => c.trim()).filter(Boolean),
-          size:        form.size,
-          sex:         form.sex,
-          description: form.description.trim() || undefined,
-        },
-        lastSeenLat:     form.lastSeenLat !== '' ? Number(form.lastSeenLat) : -34.6037,
-        lastSeenLng:     form.lastSeenLng !== '' ? Number(form.lastSeenLng) : -58.3816,
-        lastSeenAddress: form.lastSeenAddress.trim() || undefined,
-        lastSeenCity:    form.lastSeenCity.trim()    || undefined,
-        lastSeenAt,
-        reward:          form.reward ? Number(form.reward) : undefined,
-        contactMethod:   form.contactMethod,
-        contactValue:    form.contactValue.trim(),
-        behaviorNotes:   form.behaviorNotes.trim() || undefined,
-      }) as { data: { id: string } };
+      // Usamos fetch directo para poder leer el body aunque el status sea != 201
+      const rawRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/cases`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          dog: {
+            name:        form.name.trim(),
+            breed:       form.breed.trim() || undefined,
+            color:       form.color.split(',').map(c => c.trim()).filter(Boolean),
+            size:        form.size,
+            sex:         form.sex,
+            description: form.description.trim() || undefined,
+          },
+          lastSeenLat:     form.lastSeenLat !== '' ? Number(form.lastSeenLat) : -34.6037,
+          lastSeenLng:     form.lastSeenLng !== '' ? Number(form.lastSeenLng) : -58.3816,
+          lastSeenAddress: form.lastSeenAddress.trim() || undefined,
+          lastSeenCity:    form.lastSeenCity.trim()    || undefined,
+          lastSeenAt,
+          reward:          form.reward ? Number(form.reward) : undefined,
+          contactMethod:   form.contactMethod,
+          contactValue:    form.contactValue.trim(),
+          behaviorNotes:   form.behaviorNotes.trim() || undefined,
+        }),
+      });
 
-      const caseId = res.data.id;
+      const json    = await rawRes.json().catch(() => ({}));
+      const caseId  = (json as any)?.data?.id as string | undefined;
 
-      // Mostrar éxito antes de subir fotos (la subida puede tardar)
+      // Si no hay caseId, sí es un error real (validación, auth, etc.)
+      if (!caseId) {
+        const msg = (json as any)?.error?.message ?? (json as any)?.message ?? `HTTP ${rawRes.status}`;
+        throw new Error(msg);
+      }
+
+      // Caso creado — mostrar éxito inmediatamente
       setSuccess(true);
       setLoading(false);
 
-      // Subir fotos — error no bloquea la navegación
+      // Subir fotos en paralelo — error silencioso, no bloquea la navegación
       if (form.photos.length > 0) {
         const fd = new FormData();
         form.photos.forEach(f => fd.append('files', f));
-        try {
-          await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/cases/${caseId}/photos`, {
-            method:  'POST',
-            headers: { Authorization: `Bearer ${localStorage.getItem('pp_token') ?? ''}` },
-            body:    fd,
-          });
-        } catch {
-          // silencioso — las fotos pueden subirse después
-        }
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/cases/${caseId}/photos`, {
+          method:  'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body:    fd,
+        }).catch(() => {/* silencioso */});
       }
 
       router.push(`/casos/${caseId}?nuevo=true`);

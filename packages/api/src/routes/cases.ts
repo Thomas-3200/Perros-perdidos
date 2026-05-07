@@ -81,32 +81,29 @@ export async function casesRoutes(app: FastifyInstance) {
       return lostCase;
     });
 
-    // Notificar a helpers — en background, no bloquear la respuesta
-    setImmediate(() => {
-      const city = body.lastSeenCity;
-      if (!city) return;
-      prisma.user.findMany({
-        where: {
-          helperMode: true,
-          alertCity: { equals: city, mode: 'insensitive' },
-          id: { not: sub },
-        },
-        select: { id: true },
-      }).then(helpers => {
+    // Notificar a helpers — fire-and-forget, nunca bloquea ni rompe la respuesta
+    setImmediate(async () => {
+      try {
+        const city = body.lastSeenCity;
+        if (!city) return;
+        const helpers = await (prisma as any).user.findMany({
+          where: { helperMode: true, alertCity: { equals: city, mode: 'insensitive' }, id: { not: sub } },
+          select: { id: true },
+        }) as Array<{ id: string }>;
         if (helpers.length === 0) return;
-        return prisma.notification.createMany({
-          data: helpers.map(h => ({
-            userId:  h.id,
-            type:    'helper_alert' as const,
-            title:   '🐾 Nuevo caso en tu zona',
-            body:    `Reportaron un perro perdido en ${city}. ¿Podés ayudar?`,
-            data:    { caseId: result.id },
+        await (prisma as any).notification.createMany({
+          data: helpers.map((h: { id: string }) => ({
+            userId: h.id,
+            type:   'helper_alert',
+            title:  '🐾 Nuevo caso en tu zona',
+            body:   `Reportaron un perro perdido en ${city}. ¿Podés ayudar?`,
+            data:   { caseId: result.id },
           })),
           skipDuplicates: true,
         });
-      }).catch(err => {
-        console.error('[cases] Error notificando helpers:', err);
-      });
+      } catch (err) {
+        console.error('[cases] Error notificando helpers (ignorado):', err);
+      }
     });
 
     return reply.code(201).send({ success: true, data: result });
