@@ -4,7 +4,7 @@ import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Camera, MapPin, Phone, ChevronRight, ChevronLeft,
-  Check, Loader2, LocateFixed, Plus, X, ImageIcon,
+  Check, Loader2, LocateFixed, Plus, X, ImageIcon, Clock,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { isLoggedIn } from '@/lib/auth';
@@ -12,6 +12,36 @@ import { AuthModal } from '@/components/auth/AuthModal';
 import clsx from 'clsx';
 
 const STEPS = ['Fotos', 'Descripción', 'Ubicación', 'Contacto'];
+
+type LastSeenTimeKey = 'today' | 'yesterday' | '2days' | 'week' | 'custom';
+
+const LOST_TIME_OPTIONS: { key: LastSeenTimeKey; label: string }[] = [
+  { key: 'today',     label: '🟢 Hoy'            },
+  { key: 'yesterday', label: '📅 Ayer'            },
+  { key: '2days',     label: '📅 Hace 2 días'     },
+  { key: 'week',      label: '📅 Hace una semana' },
+  { key: 'custom',    label: '📆 Otra fecha'      },
+];
+
+function timeKeyToISO(key: LastSeenTimeKey, customDate: string): string {
+  const now = new Date();
+  switch (key) {
+    case 'today':     return now.toISOString();
+    case 'yesterday': {
+      const d = new Date(now); d.setDate(d.getDate() - 1); d.setHours(12, 0, 0, 0);
+      return d.toISOString();
+    }
+    case '2days': {
+      const d = new Date(now); d.setDate(d.getDate() - 2); d.setHours(12, 0, 0, 0);
+      return d.toISOString();
+    }
+    case 'week': {
+      const d = new Date(now); d.setDate(d.getDate() - 7); d.setHours(12, 0, 0, 0);
+      return d.toISOString();
+    }
+    case 'custom': return new Date(customDate).toISOString();
+  }
+}
 
 interface FormState {
   photos:          File[];
@@ -25,7 +55,8 @@ interface FormState {
   lastSeenLng:     number | '';
   lastSeenAddress: string;
   lastSeenCity:    string;
-  lastSeenAt:      string;
+  lastSeenTimeKey: LastSeenTimeKey;
+  lastSeenCustom:  string;
   contactMethod:   string;
   contactValue:    string;
   reward:          string;
@@ -35,39 +66,32 @@ interface FormState {
 const INITIAL: FormState = {
   photos: [], name: '', breed: '', color: '', size: 'medium', sex: 'unknown', description: '',
   lastSeenLat: '', lastSeenLng: '', lastSeenAddress: '', lastSeenCity: '',
-  lastSeenAt: new Date().toISOString().slice(0, 16),
+  lastSeenTimeKey: 'today',
+  lastSeenCustom:  new Date().toISOString().slice(0, 16),
   contactMethod: 'whatsapp', contactValue: '', reward: '', behaviorNotes: '',
 };
 
 function validateStep(step: number, form: FormState): string {
-  if (step === 0 && form.photos.length === 0) return 'Agregá al menos una foto de tu perro';
-  if (step === 1 && !form.name.trim())         return 'El nombre del perro es obligatorio';
-  if (step === 1 && !form.color.trim())        return 'Indicá al menos un color';
-  if (step === 2 && !form.lastSeenCity.trim()) return 'La ciudad es obligatoria';
-  if (step === 2 && form.lastSeenLat === '')   return 'Necesitamos la ubicación (usá el botón GPS o ingresá las coordenadas)';
-  if (step === 3 && !form.contactValue.trim()) return 'El dato de contacto es obligatorio';
+  if (step === 0 && form.photos.length === 0)    return 'Agregá al menos una foto de tu perro';
+  if (step === 1 && !form.name.trim())            return 'El nombre del perro es obligatorio';
+  if (step === 1 && !form.color.trim())           return 'Indicá al menos un color';
+  // Ciudad OR dirección — no obligamos ambas
+  if (step === 2 && !form.lastSeenCity.trim() && !form.lastSeenAddress.trim())
+    return 'Ingresá la ciudad o la dirección donde fue visto por última vez';
+  if (step === 3 && !form.contactValue.trim())    return 'El dato de contacto es obligatorio';
   return '';
 }
 
 const MAX_PHOTOS = 3;
 const PHOTO_LABELS = ['Frente', 'Lado', 'Otra'];
 
-// ── Componente selector de 3 fotos ────────────────────────────────────────────
-// Cada slot tiene 2 inputs: uno con capture="environment" (cámara) y otro sin (galería).
-// Al tocar un slot vacío se muestra una action sheet para elegir origen.
-function PhotoSlots({
-  photos,
-  onChange,
-}: {
-  photos: File[];
-  onChange: (photos: File[]) => void;
-}) {
-  // 3 refs para la cámara + 3 refs para la galería
-  const cameraRefs  = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
-  const galleryRefs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
-
-  // Slot activo para mostrar la action sheet (null = cerrada)
-  const [actionSlot, setActionSlot] = useState<number | null>(null);
+// ── Selector de fotos — solo galería ─────────────────────────────────────────
+function PhotoSlots({ photos, onChange }: { photos: File[]; onChange: (photos: File[]) => void }) {
+  const galleryRefs = [
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+  ];
 
   function handleFile(slot: number, e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -76,24 +100,12 @@ function PhotoSlots({
     const next = [...photos];
     next[slot] = file;
     onChange(next);
-    setActionSlot(null);
   }
 
   function remove(i: number) {
     const next = [...photos];
     next.splice(i, 1);
     onChange(next);
-  }
-
-  function openCamera(slot: number) {
-    setActionSlot(null);
-    // pequeño delay para que el estado se cierre antes de abrir el input nativo
-    setTimeout(() => cameraRefs[slot].current?.click(), 50);
-  }
-
-  function openGallery(slot: number) {
-    setActionSlot(null);
-    setTimeout(() => galleryRefs[slot].current?.click(), 50);
   }
 
   return (
@@ -104,17 +116,7 @@ function PhotoSlots({
           const url  = file ? URL.createObjectURL(file) : null;
           return (
             <div key={i} className="aspect-square relative">
-
-              {/* Input cámara (capture="environment") */}
-              <input
-                ref={cameraRefs[i]}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="sr-only"
-                onChange={e => handleFile(i, e)}
-              />
-              {/* Input galería (sin capture) */}
+              {/* Input galería */}
               <input
                 ref={galleryRefs[i]}
                 type="file"
@@ -127,7 +129,7 @@ function PhotoSlots({
                 <div className="relative w-full h-full rounded-2xl overflow-hidden border-2 border-brand-400">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={url} alt={PHOTO_LABELS[i]} className="w-full h-full object-cover" />
-                  {/* Botón quitar */}
+                  {/* Quitar */}
                   <button
                     type="button"
                     onClick={() => remove(i)}
@@ -135,14 +137,13 @@ function PhotoSlots({
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
-                  {/* Toca para reemplazar → abre action sheet */}
+                  {/* Reemplazar */}
                   <button
                     type="button"
-                    onClick={() => setActionSlot(i)}
+                    onClick={() => galleryRefs[i].current?.click()}
                     className="absolute inset-0 w-full h-full opacity-0"
                     aria-label={`Reemplazar foto ${PHOTO_LABELS[i]}`}
                   />
-                  {/* Label ángulo */}
                   <span className="absolute bottom-1 left-1 right-1 text-center text-[10px] font-bold text-white bg-black/40 rounded-lg py-0.5">
                     {PHOTO_LABELS[i]}
                   </span>
@@ -150,7 +151,7 @@ function PhotoSlots({
               ) : (
                 <button
                   type="button"
-                  onClick={() => setActionSlot(i)}
+                  onClick={() => galleryRefs[i].current?.click()}
                   className="w-full h-full rounded-2xl border-2 border-dashed border-gray-300
                              hover:border-brand-400 hover:bg-brand-50 transition-colors
                              flex flex-col items-center justify-center gap-1 active:scale-95"
@@ -165,51 +166,8 @@ function PhotoSlots({
       </div>
 
       <p className="text-xs text-gray-400 text-center">
-        Tocá cada recuadro para agregar una foto · Máximo {MAX_PHOTOS} fotos
+        Tocá cada recuadro para elegir una foto de tu galería · Máximo {MAX_PHOTOS} fotos
       </p>
-
-      {/* ── Action sheet: elegir cámara o galería ───────────────────────── */}
-      {actionSlot !== null && (
-        <div
-          className="fixed inset-0 z-50 bg-black/50 flex items-end"
-          onClick={() => setActionSlot(null)}
-        >
-          <div
-            className="w-full bg-white rounded-t-3xl p-5 space-y-3 pb-8"
-            onClick={e => e.stopPropagation()}
-          >
-            <p className="text-center text-sm font-semibold text-gray-500 mb-1">
-              Foto — {PHOTO_LABELS[actionSlot]}
-            </p>
-
-            <button
-              type="button"
-              onClick={() => openCamera(actionSlot)}
-              className="w-full flex items-center gap-3 py-4 px-4 rounded-2xl bg-brand-50 hover:bg-brand-100 transition-colors text-brand-700 font-semibold"
-            >
-              <Camera className="w-5 h-5" />
-              Sacar foto ahora
-            </button>
-
-            <button
-              type="button"
-              onClick={() => openGallery(actionSlot)}
-              className="w-full flex items-center gap-3 py-4 px-4 rounded-2xl bg-gray-50 hover:bg-gray-100 transition-colors text-gray-700 font-semibold"
-            >
-              <ImageIcon className="w-5 h-5" />
-              Elegir de la galería
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActionSlot(null)}
-              className="w-full py-3 text-sm text-gray-400 font-medium"
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -247,7 +205,7 @@ export default function ReportarPerdidoPage() {
         setError('');
       },
       () => {
-        setError('No se pudo obtener la ubicación. Ingresá las coordenadas manualmente.');
+        setError('No se pudo obtener la ubicación automática. Ingresá la dirección manualmente.');
         setGeoLoading(false);
       },
       { timeout: 10000, enableHighAccuracy: true },
@@ -258,6 +216,8 @@ export default function ReportarPerdidoPage() {
     setLoading(true);
     setError('');
     try {
+      const lastSeenAt = timeKeyToISO(form.lastSeenTimeKey, form.lastSeenCustom);
+
       const res = await api.cases.create({
         dog: {
           name:        form.name.trim(),
@@ -267,11 +227,11 @@ export default function ReportarPerdidoPage() {
           sex:         form.sex,
           description: form.description.trim() || undefined,
         },
-        lastSeenLat:     Number(form.lastSeenLat),
-        lastSeenLng:     Number(form.lastSeenLng),
+        lastSeenLat:     form.lastSeenLat !== '' ? Number(form.lastSeenLat) : -34.6037,
+        lastSeenLng:     form.lastSeenLng !== '' ? Number(form.lastSeenLng) : -58.3816,
         lastSeenAddress: form.lastSeenAddress.trim() || undefined,
-        lastSeenCity:    form.lastSeenCity.trim() || undefined,
-        lastSeenAt:      new Date(form.lastSeenAt).toISOString(),
+        lastSeenCity:    form.lastSeenCity.trim()    || undefined,
+        lastSeenAt,
         reward:          form.reward ? Number(form.reward) : undefined,
         contactMethod:   form.contactMethod,
         contactValue:    form.contactValue.trim(),
@@ -300,10 +260,7 @@ export default function ReportarPerdidoPage() {
   function handleSubmit() {
     const err = validateStep(step, form);
     if (err) { setError(err); return; }
-    if (!isLoggedIn()) {
-      setShowAuth(true);
-      return;
-    }
+    if (!isLoggedIn()) { setShowAuth(true); return; }
     submitCase();
   }
 
@@ -347,7 +304,7 @@ export default function ReportarPerdidoPage() {
               <Camera className="w-12 h-12 text-brand-500 mx-auto mb-3" />
               <h2 className="text-xl font-bold">Fotos de tu perro</h2>
               <p className="text-gray-500 text-sm mt-1">
-                Agregá hasta 3 fotos en diferentes ángulos · JPG, PNG o WEBP
+                Elegí hasta 3 fotos de tu galería · JPG, PNG o WEBP
               </p>
             </div>
 
@@ -363,7 +320,7 @@ export default function ReportarPerdidoPage() {
             )}
 
             <p className="text-xs text-amber-700 bg-amber-50 rounded-xl p-3">
-              💡 Tip: frente, perfil y una foto de cuerpo completo aumentan mucho las chances de que alguien lo reconozca
+              💡 Tip: frente, perfil y cuerpo completo aumentan mucho las chances de que alguien lo reconozca
             </p>
           </div>
         )}
@@ -422,13 +379,13 @@ export default function ReportarPerdidoPage() {
           </div>
         )}
 
-        {/* ── Paso 2: Ubicación ────────────────────────────────────────────────── */}
+        {/* ── Paso 2: Ubicación + Cuándo ───────────────────────────────────────── */}
         {step === 2 && (
           <div className="space-y-4">
             <div className="flex items-start gap-3 mb-2">
               <MapPin className="w-8 h-8 text-brand-500 shrink-0 mt-0.5" />
               <div>
-                <h2 className="text-xl font-bold">¿Dónde fue visto por última vez?</h2>
+                <h2 className="text-xl font-bold">¿Dónde y cuándo se perdió?</h2>
                 <p className="text-gray-500 text-sm">La ubicación ayuda a la comunidad a buscar en el área correcta</p>
               </div>
             </div>
@@ -448,41 +405,74 @@ export default function ReportarPerdidoPage() {
               {geoLoading
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Obteniendo ubicación...</>
                 : form.lastSeenLat !== ''
-                  ? <><Check className="w-4 h-4" /> Ubicación obtenida ({Number(form.lastSeenLat).toFixed(4)}, {Number(form.lastSeenLng).toFixed(4)})</>
-                  : <><LocateFixed className="w-4 h-4" /> Usar mi ubicación actual</>
+                  ? <><Check className="w-4 h-4" /> Ubicación detectada ✓</>
+                  : <><LocateFixed className="w-4 h-4" /> Usar mi ubicación actual (opcional)</>
               }
             </button>
 
-            <input className="input" placeholder="Dirección (calle y número)"
-              value={form.lastSeenAddress} onChange={e => set('lastSeenAddress', e.target.value)} />
-
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Ciudad *</label>
-              <input className="input" placeholder="Ej: Buenos Aires"
-                value={form.lastSeenCity} onChange={e => { set('lastSeenCity', e.target.value); setError(''); }} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Latitud</label>
-                <input className="input" type="number" step="any" placeholder="-34.6037"
-                  value={form.lastSeenLat}
-                  onChange={e => { set('lastSeenLat', e.target.value === '' ? '' : Number(e.target.value)); setError(''); }} />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Longitud</label>
-                <input className="input" type="number" step="any" placeholder="-58.3816"
-                  value={form.lastSeenLng}
-                  onChange={e => { set('lastSeenLng', e.target.value === '' ? '' : Number(e.target.value)); setError(''); }} />
-              </div>
-            </div>
-
+            {/* Dirección exacta */}
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">
-                Fecha y hora en que se perdió
+                Dirección exacta
               </label>
-              <input className="input" type="datetime-local"
-                value={form.lastSeenAt} onChange={e => set('lastSeenAt', e.target.value)} />
+              <input
+                className="input"
+                placeholder="Ej: Av. Corrientes 1234, esquina Larrea"
+                value={form.lastSeenAddress}
+                onChange={e => { set('lastSeenAddress', e.target.value); setError(''); }}
+              />
+            </div>
+
+            {/* Ciudad */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Ciudad
+                {form.lastSeenAddress.trim()
+                  ? <span className="text-gray-400 font-normal ml-1">(opcional si pusiste dirección)</span>
+                  : <span className="text-red-400 ml-1">*</span>
+                }
+              </label>
+              <input
+                className="input"
+                placeholder="Ej: Buenos Aires"
+                value={form.lastSeenCity}
+                onChange={e => { set('lastSeenCity', e.target.value); setError(''); }}
+              />
+            </div>
+
+            {/* ── Cuándo se perdió ── */}
+            <div className="space-y-2 pt-1">
+              <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-brand-500" /> ¿Cuándo se perdió?
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {LOST_TIME_OPTIONS.map(opt => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => { set('lastSeenTimeKey', opt.key); setError(''); }}
+                    className={clsx(
+                      'py-3 px-3 rounded-xl border-2 text-sm font-medium text-left transition-all',
+                      form.lastSeenTimeKey === opt.key
+                        ? 'border-brand-500 bg-brand-50 text-brand-700 shadow-sm'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-brand-300 hover:bg-brand-50/50',
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Picker solo si eligió "Otra fecha" */}
+              {form.lastSeenTimeKey === 'custom' && (
+                <input
+                  className="input mt-1"
+                  type="datetime-local"
+                  value={form.lastSeenCustom}
+                  max={new Date().toISOString().slice(0, 16)}
+                  onChange={e => set('lastSeenCustom', e.target.value)}
+                />
+              )}
             </div>
           </div>
         )}
