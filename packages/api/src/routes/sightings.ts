@@ -36,10 +36,53 @@ async function getAnonymousUserId(): Promise<string> {
   return _anonId;
 }
 
+// ─── Rate limiting anónimo en memoria (MVP) ─────────────────────────────────
+// Map<key, { count, resetAt }>. Para producción real usar Redis con TTL.
+const anonHits = new Map<string, { count: number; resetAt: number }>();
+
+async function getAnonymousCountThisHour(key: string): Promise<number> {
+  const now = Date.now();
+  const rec = anonHits.get(key);
+  if (!rec || rec.resetAt < now) return 0;
+  return rec.count;
+}
+
+function incrementAnonymousCount(key: string): void {
+  const now = Date.now();
+  const HOUR = 60 * 60 * 1000;
+  const rec = anonHits.get(key);
+  if (!rec || rec.resetAt < now) {
+    anonHits.set(key, { count: 1, resetAt: now + HOUR });
+  } else {
+    rec.count += 1;
+  }
+
+  // Cleanup periódico para evitar leak (cada 1000 hits)
+  if (anonHits.size > 5000) {
+    for (const [k, v] of anonHits.entries()) {
+      if (v.resetAt < now) anonHits.delete(k);
+    }
+  }
+}
+
 export async function sightingsRoutes(app: FastifyInstance) {
 
   // ── POST / — Crear avistamiento (auth opcional — permite anónimos) ────────
-  app.post('/', { preHandler: optionalAuth }, async (req, reply) => {
+  // Rate limit por IP: 5/hora para anónimos, 30/hora para logueados
+  app.post('/', {
+    preHandler: optionalAuth,
+    config: {
+      rateLimit: {
+        max: 30,
+        timeWindow: '1 hour',
+        keyGenerator: (req) => {
+          const userId = (req.user as { sub?: string } | undefined)?.sub;
+          // Si está logueado, contar por user; si no, por IP
+          return userId ?? `anon:${req.ip}`;
+        },
+      },
+    },
+  }, async (req, reply) => {
     const userId = (req.user as { sub?: string } | undefined)?.sub;
     const isAnonymous = !userId;
 
@@ -50,10 +93,49 @@ export async function sightingsRoutes(app: FastifyInstance) {
     const parts = req.parts();
     for await (const part of parts) {
       if (part.type === 'file') {
+        // Validación: solo imágenes y máximo 5 fotos por avistamiento
+        const mimetype = part.mimetype ?? '';
+        if (!mimetype.startsWith('image/')) {
+          return reply.code(400).send({
+            success: false,
+            error: { code: 'INVALID_FILE_TYPE', message: 'Solo se permiten archivos de imagen' },
+          });
+        }
+        if (photoBuffers.length >= 5) {
+          return reply.code(400).send({
+            success: false,
+            error: { code: 'TOO_MANY_PHOTOS', message: 'Máximo 5 fotos por avistamiento' },
+          });
+        }
         photoBuffers.push(part);
       } else {
         fields[part.fieldname] = part.value as string;
       }
+    }
+
+    // Honeypot anti-bot: si el campo "website" viene lleno, es un bot
+    if (fields.website?.trim()) {
+      app.log.warn({ ip: req.ip }, '[sightings] Honeypot triggered, possible bot');
+      return reply.code(400).send({
+        success: false,
+        error: { code: 'INVALID', message: 'Solicitud inválida' },
+      });
+    }
+
+    // Anónimos: límite extra de 5/hora (más estricto que el 30 general)
+    if (isAnonymous) {
+      const anonKey = `anon:${req.ip}`;
+      const anonCount = await getAnonymousCountThisHour(anonKey);
+      if (anonCount >= 5) {
+        return reply.code(429).send({
+          success: false,
+          error: {
+            code: 'RATE_LIMIT',
+            message: 'Demasiados avistamientos en la última hora. Intentá más tarde o creá una cuenta.',
+          },
+        });
+      }
+      incrementAnonymousCount(anonKey);
     }
 
     const body = CreateSightingSchema.parse({

@@ -219,6 +219,7 @@ export default function ReportarAvistamientoPage() {
   const [done,         setDone]         = useState(false);
   const [locationConfirmed, setLocationConfirmed] = useState(false);
   const [anonymousContact,  setAnonymousContact]  = useState(''); // WhatsApp/teléfono opcional cuando reporta sin login
+  const [honeypot,          setHoneypot]          = useState(''); // Campo trampa anti-bots — debe quedar vacío
 
   /* ── Manejo del botón back del navegador / móvil ─────────────────────── */
   useEffect(() => {
@@ -320,6 +321,8 @@ export default function ReportarAvistamientoPage() {
       if (!isLoggedIn() && anonymousContact.trim()) {
         fd.append('anonymousContact', anonymousContact.trim());
       }
+      // Honeypot anti-bot: campo vacío que solo bots completarían
+      fd.append('website', honeypot);
 
       // 3️⃣ Enviar — el servidor ya está despierto, esto debería tardar <15s
       await api.sightings.create(fd);
@@ -598,6 +601,18 @@ export default function ReportarAvistamientoPage() {
               placeholder="Color, tamaño, collar, si estaba asustado o manso, si tenía heridas, si tenía nombre en la chapa..."
               value={desc}
               onChange={e => setDesc(e.target.value)}
+            />
+
+            {/* Honeypot oculto — bots automáticos lo completan, humanos no lo ven */}
+            <input
+              type="text"
+              name="website"
+              autoComplete="off"
+              tabIndex={-1}
+              value={honeypot}
+              onChange={e => setHoneypot(e.target.value)}
+              style={{ position: 'absolute', left: '-9999px', width: '1px', height: '1px', opacity: 0 }}
+              aria-hidden="true"
             />
 
             {/* Campo opcional de WhatsApp para usuarios sin cuenta */}

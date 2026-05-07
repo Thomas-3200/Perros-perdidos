@@ -20,8 +20,36 @@ const AI_TIMEOUT_MS = 60_000; // 60 segundos para que Claude procese la imagen
 export async function ingestRoutes(app: FastifyInstance) {
 
   // ── POST /social — Enviar caso desde red social ───────────────────────────
-  app.post('/social', { preHandler: requireAuth, config: { rawBody: false } }, async (req, reply) => {
+  // Rate limit estricto: 5/día por usuario (cada llamada cuesta plata en API IA)
+  app.post('/social', {
+    preHandler: requireAuth,
+    config: {
+      rawBody: false,
+      rateLimit: {
+        max: 5,
+        timeWindow: '1 day',
+        keyGenerator: (req) => (req.user as { sub: string }).sub,
+      },
+    },
+  }, async (req, reply) => {
     const { sub } = req.user as { sub: string };
+
+    // Tope adicional global por DÍA: máximo 100 importaciones IA en toda la app
+    // (a ~$0.003 USD/imagen = ~$10 USD/mes en el peor caso)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayCount = await prisma.importedSocialCase.count({
+      where: { createdAt: { gte: today } },
+    });
+    if (todayCount >= 100) {
+      return reply.code(429).send({
+        success: false,
+        error: {
+          code: 'DAILY_QUOTA_REACHED',
+          message: 'Alcanzamos el límite diario de análisis IA. Intentá de nuevo mañana.',
+        },
+      });
+    }
 
     // Puede venir como JSON (text) o multipart (screenshot/photo)
     const contentType = req.headers['content-type'] ?? '';
