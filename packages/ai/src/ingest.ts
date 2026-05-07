@@ -30,34 +30,44 @@ const getAnthropic = () => {
   return _anthropic;
 };
 
-const EXTRACTION_PROMPT = `Eres un asistente especializado en analizar publicaciones sobre perros perdidos en Argentina y Latinoamérica.
+const EXTRACTION_PROMPT = `Eres un asistente especializado en analizar publicaciones sobre perros perdidos o encontrados en Argentina y Latinoamérica.
 
-Analiza el contenido provisto (puede ser texto de un post, un screenshot, o una imagen) y extrae la información relevante.
+Analiza el contenido provisto (puede ser texto de un post, un screenshot de red social, o una fotografía) y extraé toda la información posible con MÁXIMO detalle.
+
+IMPORTANTE — extraé SIEMPRE que puedas:
+- Raza del perro (aunque sea aproximada: "labrador", "mestizo", "poodle", etc.)
+- Colores exactos (marrón, negro, blanco, manchas, etc.)
+- Tamaño estimado (small=pequeño, medium=mediano, large=grande, extra_large=muy grande)
+- Dirección o barrio exacto donde fue visto/perdido
+- Ciudad o localidad
+- Fecha Y hora de la publicación original (leer el timestamp del post si lo hay, o inferir de frases como "esta mañana", "ayer", etc.)
+- Número de WhatsApp, teléfono, o información de contacto del que publicó
+- Cualquier seña particular: collar, cicatriz, tatuaje, microchip, nombre, comportamiento
 
 Responde SOLO con JSON válido siguiendo esta estructura exacta (sin markdown, sin texto adicional):
 {
   "caseType": "lost|found|unknown",
-  "description": "descripción del perro con todas las señas particulares que encuentres",
+  "description": "descripción completa del perro: todas las señas particulares, collar, comportamiento, nombre si se sabe, etc.",
   "location": {
-    "address": "dirección si la hay",
-    "city": "ciudad",
+    "address": "dirección o barrio exacto si aparece, o null",
+    "city": "ciudad o localidad, o null",
     "country": "país (por defecto Argentina si no se indica)",
     "lat": número de latitud estimada según la ciudad (ej: -34.6037 para Buenos Aires), o null,
     "lng": número de longitud estimada según la ciudad (ej: -58.3816 para Buenos Aires), o null
   },
-  "seenAt": "fecha en ISO 8601 si se puede inferir, o null",
-  "contactInfo": "teléfono/email/usuario de red social del contacto si aparece",
+  "seenAt": "fecha y hora ISO 8601 de CUANDO FUE VISTO/PUBLICADO (ej: '2025-03-15T14:30:00'), o null si no se puede inferir",
+  "contactInfo": "número de WhatsApp, teléfono o email del contacto si aparece en el contenido, o null",
   "reward": número en moneda local o null,
   "dogAttributes": {
-    "breed": "raza o null",
-    "color": ["colores del perro"],
+    "breed": "raza del perro o 'mestizo' si no está definida, o null si no hay info",
+    "color": ["color1", "color2"],
     "size": "small|medium|large|extra_large o null"
   },
   "confidence": número entre 0 y 1 indicando confianza de la extracción
 }
 
 Si el contenido no tiene relación con perros perdidos o encontrados, pon confidence: 0 y caseType: "unknown".
-Si hay información parcial, extraé lo que puedas y ajustá confidence al porcentaje de datos disponibles.`;
+Si hay información parcial, extraé lo que puedas y ajustá confidence proporcionalmente.`;
 
 export async function parseImportedCase(importedCaseId: string): Promise<void> {
   const imported = await prisma.importedSocialCase.findUniqueOrThrow({
@@ -173,6 +183,21 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
       // Ciudad: usar la extraída o marcar como "Sin ubicación"
       const city = loc?.city ?? 'Sin ubicación especificada';
 
+      // Fecha: usar la extraída por la IA (fecha real del post), o la de creación como fallback
+      const seenAt = extractedData.seenAt ?? imported.createdAt;
+
+      // Descripción enriquecida: combinar descripción base + atributos del perro + contacto extraído
+      const attrs = extractedData.dogAttributes;
+      const parts: string[] = [];
+
+      if (attrs?.breed)               parts.push(`Raza: ${attrs.breed}`);
+      if (attrs?.color?.length)       parts.push(`Color: ${attrs.color.join(', ')}`);
+      if (attrs?.size)                parts.push(`Tamaño: ${{ small: 'pequeño', medium: 'mediano', large: 'grande', extra_large: 'muy grande' }[attrs.size] ?? attrs.size}`);
+      if (extractedData.description)  parts.push(extractedData.description);
+      if (extractedData.contactInfo)  parts.push(`Contacto del post: ${extractedData.contactInfo}`);
+
+      const description = parts.join(' · ') || extractedData.description;
+
       const sighting = await prisma.sighting.create({
         data: {
           reporterId:      imported.submittedById,
@@ -180,15 +205,15 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
           locationLng:     lng,
           locationAddress: loc?.address,
           locationCity:    city,
-          seenAt:          imported.createdAt, // siempre fecha actual, nunca la del post antiguo
+          seenAt,
           photos,
-          description:     extractedData.description,
+          description,
           source:          'social_import',
           importedCaseId:  imported.id,
         },
       });
 
-      console.log(`[ingest] ✅ Avistamiento creado: ${sighting.id} (ciudad: ${city}, confianza: ${extractedData.confidence})`);
+      console.log(`[ingest] ✅ Avistamiento creado: ${sighting.id} (ciudad: ${city}, visto: ${seenAt}, confianza: ${extractedData.confidence})`);
     }
 
   } catch (err) {

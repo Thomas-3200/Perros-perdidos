@@ -162,7 +162,7 @@ export async function sightingsRoutes(app: FastifyInstance) {
     const sighting = await prisma.sighting.findUnique({
       where: { id },
       include: {
-        reporter: { select: { name: true, avatarUrl: true } },
+        reporter: { select: { name: true, avatarUrl: true, phone: true } },
         matches: {
           include: {
             lostCase: {
