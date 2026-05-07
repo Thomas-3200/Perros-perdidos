@@ -318,9 +318,12 @@ export async function casesRoutes(app: FastifyInstance) {
     const existing = await prisma.lostCase.findFirst({ where: { id, ownerId: sub } });
     if (!existing) return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Caso no encontrado o no tenés permiso' } });
 
-    // Eliminar en cascada: matches → supportSessions → case → dog
+    // Eliminar en cascada respetando foreign keys:
+    // Match → SupportSession → ReunionStory → Notification → LostCase → Dog
     await prisma.match.deleteMany({ where: { lostCaseId: id } });
     await prisma.supportSession.deleteMany({ where: { lostCaseId: id } });
+    await prisma.reunionStory.deleteMany({ where: { lostCaseId: id } });
+    await prisma.notification.deleteMany({ where: { lostCaseId: id } });
     await prisma.lostCase.delete({ where: { id } });
     await prisma.dog.deleteMany({ where: { id: existing.dogId } });
 
