@@ -188,7 +188,7 @@ async function basicProcessSighting(sightingId: string): Promise<MatchResult[]> 
           where:  { id: lostCase.ownerId },
           select: { email: true, name: true },
         });
-        if (owner?.email && !owner.email.endsWith('@perros-perdidos.app')) {
+        if (owner?.email && owner.email !== 'anonymous@perros-perdidos.app') {
           sendMatchEmail({
             to:               owner.email,
             ownerName:        owner.name,
@@ -323,7 +323,7 @@ async function aiProcessSighting(sightingId: string): Promise<MatchResult[]> {
           where:  { id: lostCase.ownerId },
           select: { email: true, name: true },
         });
-        if (owner?.email && !owner.email.endsWith('@perros-perdidos.app')) {
+        if (owner?.email && owner.email !== 'anonymous@perros-perdidos.app') {
           sendMatchEmail({
             to:               owner.email,
             ownerName:        owner.name,
