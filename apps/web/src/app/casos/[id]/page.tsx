@@ -612,7 +612,9 @@ function CaseDetail() {
           <h2 className="font-semibold text-gray-800 text-sm mb-3">Último avistamiento</h2>
           <div className="flex items-start gap-2 text-sm text-gray-600">
             <MapPin className="w-4 h-4 text-brand-500 mt-0.5 shrink-0" />
-            <span>{c.lastSeenAddress || c.lastSeenCity || 'Sin dirección especificada'}</span>
+            <span>
+              {[c.lastSeenAddress, c.lastSeenCity].filter(Boolean).join(', ') || 'Sin dirección especificada'}
+            </span>
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <Clock className="w-4 h-4 text-brand-500 shrink-0" />

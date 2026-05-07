@@ -204,9 +204,28 @@ export default function ReportarPerdidoPage() {
     }
     setGeoLoading(true);
     navigator.geolocation.getCurrentPosition(
-      pos => {
-        set('lastSeenLat', pos.coords.latitude);
-        set('lastSeenLng', pos.coords.longitude);
+      async pos => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        set('lastSeenLat', lat);
+        set('lastSeenLng', lng);
+
+        // Reverse geocoding con Nominatim para obtener ciudad y dirección
+        try {
+          const res  = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+            { headers: { 'Accept-Language': 'es' } },
+          );
+          const geo  = await res.json();
+          const addr = geo.address ?? {};
+          const city = addr.city || addr.town || addr.village || addr.county || addr.state || '';
+          const road = addr.road ? `${addr.road}${addr.house_number ? ' ' + addr.house_number : ''}` : '';
+          if (city) set('lastSeenCity',    city);
+          if (road) set('lastSeenAddress', road);
+        } catch {
+          // silencioso — el usuario puede completar manualmente
+        }
+
         setGeoLoading(false);
         setError('');
       },
