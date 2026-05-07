@@ -81,20 +81,20 @@ export async function casesRoutes(app: FastifyInstance) {
       return lostCase;
     });
 
-    // Notificar a helpers con alertCity que coincide con la ciudad del caso
-    const city = body.lastSeenCity;
-    if (city) {
-      const helpers = await prisma.user.findMany({
+    // Notificar a helpers — en background, no bloquear la respuesta
+    setImmediate(() => {
+      const city = body.lastSeenCity;
+      if (!city) return;
+      prisma.user.findMany({
         where: {
           helperMode: true,
           alertCity: { equals: city, mode: 'insensitive' },
-          id: { not: sub }, // no notificar al propio dueño
+          id: { not: sub },
         },
         select: { id: true },
-      });
-
-      if (helpers.length > 0) {
-        await prisma.notification.createMany({
+      }).then(helpers => {
+        if (helpers.length === 0) return;
+        return prisma.notification.createMany({
           data: helpers.map(h => ({
             userId:  h.id,
             type:    'helper_alert' as const,
@@ -104,8 +104,10 @@ export async function casesRoutes(app: FastifyInstance) {
           })),
           skipDuplicates: true,
         });
-      }
-    }
+      }).catch(err => {
+        console.error('[cases] Error notificando helpers:', err);
+      });
+    });
 
     return reply.code(201).send({ success: true, data: result });
   });

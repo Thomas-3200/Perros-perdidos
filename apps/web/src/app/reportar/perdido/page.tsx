@@ -180,6 +180,7 @@ export default function ReportarPerdidoPage() {
   const [geoLoading, setGeoLoading] = useState(false);
   const [error,      setError]      = useState('');
   const [showAuth,   setShowAuth]   = useState(false);
+  const [success,    setSuccess]    = useState(false);
 
   const set = (field: keyof FormState, value: unknown) =>
     setForm(prev => ({ ...prev, [field]: value }));
@@ -240,14 +241,23 @@ export default function ReportarPerdidoPage() {
 
       const caseId = res.data.id;
 
+      // Mostrar éxito antes de subir fotos (la subida puede tardar)
+      setSuccess(true);
+      setLoading(false);
+
+      // Subir fotos — error no bloquea la navegación
       if (form.photos.length > 0) {
         const fd = new FormData();
         form.photos.forEach(f => fd.append('files', f));
-        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/cases/${caseId}/photos`, {
-          method:  'POST',
-          headers: { Authorization: `Bearer ${localStorage.getItem('pp_token') ?? ''}` },
-          body:    fd,
-        });
+        try {
+          await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/cases/${caseId}/photos`, {
+            method:  'POST',
+            headers: { Authorization: `Bearer ${localStorage.getItem('pp_token') ?? ''}` },
+            body:    fd,
+          });
+        } catch {
+          // silencioso — las fotos pueden subirse después
+        }
       }
 
       router.push(`/casos/${caseId}?nuevo=true`);
@@ -262,6 +272,27 @@ export default function ReportarPerdidoPage() {
     if (err) { setError(err); return; }
     if (!isLoggedIn()) { setShowAuth(true); return; }
     submitCase();
+  }
+
+  // ── Pantalla de éxito (mientras se suben fotos y se navega) ──────────────
+  if (success) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6 text-center gap-6">
+        <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center">
+          <Check className="w-10 h-10 text-green-600" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">¡Búsqueda creada!</h2>
+          <p className="text-gray-500 text-sm">
+            Tu reporte está publicado. La comunidad ya puede ayudarte a encontrar a tu perro.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-brand-600 text-sm">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Preparando tu caso...
+        </div>
+      </div>
+    );
   }
 
   return (
