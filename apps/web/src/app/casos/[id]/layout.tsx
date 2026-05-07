@@ -31,30 +31,34 @@ export async function generateMetadata(
   const name     = c.dog?.name ?? 'Perro';
   const breed    = c.dog?.breed ? ` · ${c.dog.breed}` : '';
   const location = c.lastSeenAddress || c.lastSeenCity || 'zona desconocida';
-  const photo    = c.dog?.photos?.[0] ?? null;
-  const contact  = c.contactValue ?? '';
+  const isFound  = c.status === 'found';
+  const reward   = c.reward;
 
-  const title       = `🐾 ${name} está perdido — ¿Lo viste?`;
-  const description = `${name}${breed} fue visto por última vez en ${location}. Si lo viste o tenés información, por favor contactá al dueño${contact ? ` (${contact})` : ''}.`;
+  const title = isFound
+    ? `🏠 ${name} volvió a casa — Perros Perdidos`
+    : `🚨 ${name} está perdido en ${c.lastSeenCity || 'Argentina'} — ¿Lo viste?`;
+
+  const baseDesc = isFound
+    ? `${name}${breed} fue reunificado gracias a la comunidad. ¡Cada reporte cuenta!`
+    : `${name}${breed} fue visto por última vez en ${location}.${reward ? ` Recompensa $${reward.toLocaleString('es-AR')}.` : ''} Si lo viste, reportalo en la app — la IA cruza tu reporte con el dueño automáticamente.`;
 
   return {
     title,
-    description,
+    description: baseDesc,
     openGraph: {
       title,
-      description,
+      description: baseDesc,
       type:   'article',
       locale: 'es_AR',
       url:    `https://perros-perdidos-web.vercel.app/casos/${id}`,
-      images: photo
-        ? [{ url: photo, width: 800, height: 600, alt: `${name} — perro perdido` }]
-        : [{ url: 'https://perros-perdidos-web.vercel.app/og-default.png', width: 800, height: 600 }],
+      // No incluimos `images` aquí: Next.js usa automáticamente
+      // `opengraph-image.tsx` que genera una imagen dinámica rica
+      // (foto + nombre + ciudad + recompensa) por caso.
     },
     twitter: {
       card:        'summary_large_image',
       title,
-      description,
-      images:      photo ? [photo] : [],
+      description: baseDesc,
     },
   };
 }

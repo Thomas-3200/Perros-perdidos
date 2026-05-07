@@ -12,11 +12,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@perros/shared": "workspace:*",
-    "@perros/db": "workspace:*",
     "@anthropic-ai/sdk": "^0.24.3",
+    "@perros/db": "workspace:*",
+    "@perros/shared": "workspace:*",
     "openai": "^4.52.0",
     "replicate": "^0.31.1",
+    "resend": "^6.12.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {

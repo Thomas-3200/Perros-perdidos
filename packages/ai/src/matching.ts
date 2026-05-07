@@ -21,6 +21,7 @@ import {
   type ConfidenceLevel,
 } from '@perros/shared';
 import { generateImageEmbedding, cosineSimilarity, extractDogAttributesFromImage } from './embedding.js';
+import { sendMatchEmail } from './email.js';
 
 export interface MatchResult {
   lostCaseId:      string;
@@ -181,6 +182,24 @@ async function basicProcessSighting(sightingId: string): Promise<MatchResult[]> 
             data:       { matchId: savedMatch.id, caseId: lostCase.id },
           },
         }).catch(err => console.warn('[matching] Error al crear notificación:', err));
+
+        // Email al dueño (fire-and-forget — nunca bloquea el matching)
+        const owner = await prisma.user.findUnique({
+          where:  { id: lostCase.ownerId },
+          select: { email: true, name: true },
+        });
+        if (owner?.email && !owner.email.endsWith('@perros-perdidos.app')) {
+          sendMatchEmail({
+            to:               owner.email,
+            ownerName:        owner.name,
+            dogName:          lostCase.dog.name,
+            matchScore:       total,
+            sightingCity:     sighting.locationCity,
+            sightingDate:     sighting.seenAt,
+            sightingPhotoUrl: sighting.photos[0],
+            caseId:           lostCase.id,
+          }).catch(err => console.warn('[matching] Error enviando email:', err));
+        }
       }
     }
 
@@ -299,6 +318,23 @@ async function aiProcessSighting(sightingId: string): Promise<MatchResult[]> {
             data:       { matchId: savedMatch.id, caseId: lostCase.id },
           },
         }).catch(err => console.warn('[matching:ai] Error al crear notificación:', err));
+
+        const owner = await prisma.user.findUnique({
+          where:  { id: lostCase.ownerId },
+          select: { email: true, name: true },
+        });
+        if (owner?.email && !owner.email.endsWith('@perros-perdidos.app')) {
+          sendMatchEmail({
+            to:               owner.email,
+            ownerName:        owner.name,
+            dogName:          lostCase.dog.name,
+            matchScore:       total,
+            sightingCity:     sighting.locationCity,
+            sightingDate:     sighting.seenAt,
+            sightingPhotoUrl: sighting.photos[0],
+            caseId:           lostCase.id,
+          }).catch(err => console.warn('[matching:ai] Error enviando email:', err));
+        }
       }
     }
 
