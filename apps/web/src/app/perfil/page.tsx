@@ -995,6 +995,19 @@ export default function PerfilPage() {
         </div>
       )}
 
+      {/* Feedback */}
+      <Link
+        href="/feedback"
+        className="card flex items-center gap-3 hover:shadow-md transition-shadow"
+      >
+        <span className="text-xl shrink-0">💡</span>
+        <div className="flex-1">
+          <p className="font-semibold text-gray-800 text-sm">Ideas y mejoras</p>
+          <p className="text-xs text-gray-500">Sugerí qué sumar o qué quitar de la app</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+      </Link>
+
       {/* Donar */}
       <Link
         href="/donar"

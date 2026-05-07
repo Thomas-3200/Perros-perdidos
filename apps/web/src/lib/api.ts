@@ -177,6 +177,16 @@ export const api = {
     markAll:  () => request('/api/v1/notifications/read-all', { method: 'PATCH' }),
   },
 
+  // ─── Feedback ────────────────────────────────────────────────────────────────
+  feedback: {
+    list: (type: 'add' | 'remove' | 'all' = 'all') =>
+      request(`/api/v1/feedback?type=${type}`),
+    create: (data: { type: 'add' | 'remove'; title: string; description?: string }) =>
+      request('/api/v1/feedback', { method: 'POST', body: JSON.stringify(data) }),
+    vote: (id: string) =>
+      request(`/api/v1/feedback/${id}/vote`, { method: 'POST' }),
+  },
+
   // ─── Estadísticas ────────────────────────────────────────────────────────────
   stats: {
     get: () => request<{ success: boolean; data: {

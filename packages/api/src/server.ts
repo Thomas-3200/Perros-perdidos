@@ -20,6 +20,7 @@ import { reunionRoutes }       from './routes/reunion.js';
 import { statsRoutes }         from './routes/stats.js';
 import { adminRoutes }         from './routes/admin.js';
 import { notificationsRoutes } from './routes/notifications.js';
+import { feedbackRoutes }       from './routes/feedback.js';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -94,6 +95,7 @@ async function bootstrap() {
   await app.register(statsRoutes,     { prefix: '/api/v1/stats' });
   await app.register(adminRoutes,         { prefix: '/api/v1/admin' });
   await app.register(notificationsRoutes, { prefix: '/api/v1/notifications' });
+  await app.register(feedbackRoutes,       { prefix: '/api/v1/feedback' });
 
   // ── Arrancar servidor ──────────────────────────────────────────────────────
   await app.listen({ port: PORT, host: HOST });

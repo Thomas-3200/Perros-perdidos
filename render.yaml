@@ -4,7 +4,7 @@ services:
     env: node
     region: oregon
     plan: free
-    buildCommand: pnpm install --frozen-lockfile
+    buildCommand: pnpm install --frozen-lockfile && (cd packages/db && node_modules/.bin/prisma db push --skip-generate || true)
     startCommand: pnpm --filter @perros/api start
     healthCheckPath: /health
     envVars:
@@ -13,6 +13,8 @@ services:
       - key: HOST
         value: 0.0.0.0
       # Las siguientes variables se configuran en el dashboard de Render:
-      # DATABASE_URL, REDIS_URL, JWT_SECRET, CORS_ORIGIN, API_BASE_URL,
+      # DATABASE_URL  ← URL del pooler (ej: Supabase Transaction Mode)
+      # DIRECT_URL    ← URL directa sin pooler (requerida para prisma db push)
+      # REDIS_URL, JWT_SECRET, CORS_ORIGIN, API_BASE_URL,
       # CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET,
       # ANTHROPIC_API_KEY   ← REQUERIDA para análisis de screenshots con IA

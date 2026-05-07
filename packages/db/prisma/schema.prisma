@@ -112,6 +112,18 @@ enum PartnerType {
   ngo
 }
 
+enum FeedbackType {
+  add
+  remove
+}
+
+enum FeedbackStatus {
+  open
+  reviewing
+  done
+  dismissed
+}
+
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
 
 model User {
@@ -151,6 +163,7 @@ model User {
   notifications    Notification[]
   supportSessions  SupportSession[]
   reviewedMatches  Match[]            @relation("ReviewedBy")
+  feedback         Feedback[]
 
   @@map("users")
 }
@@ -391,6 +404,28 @@ model QrProfile {
   createdAt   DateTime @default(now())
 
   @@map("qr_profiles")
+}
+
+// ─── FEEDBACK DE USUARIOS ─────────────────────────────────────────────────────
+
+model Feedback {
+  id          String         @id @default(cuid())
+
+  // Quién lo envió (opcional — puede ser anónimo)
+  userId      String?
+  user        User?          @relation(fields: [userId], references: [id])
+
+  type        FeedbackType   // add | remove
+  title       String         // Título corto (ej: "Modo oscuro")
+  description String?        // Descripción opcional
+
+  votes       Int            @default(0)
+  voterIds    String[]       @default([]) // IDs de usuarios que votaron (dedup)
+
+  status      FeedbackStatus @default(open)
+  createdAt   DateTime       @default(now())
+
+  @@map("feedback")
 }
 
 // ─── SOCIOS (REFUGIOS, VETS, RESCATISTAS) ────────────────────────────────────
