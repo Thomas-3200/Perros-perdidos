@@ -75,9 +75,14 @@ function validateStep(step: number, form: FormState): string {
   if (step === 0 && form.photos.length === 0)    return 'Agregá al menos una foto de tu perro';
   if (step === 1 && !form.name.trim())            return 'El nombre del perro es obligatorio';
   if (step === 1 && !form.color.trim())           return 'Indicá al menos un color';
-  // Ciudad OR dirección — no obligamos ambas
-  if (step === 2 && !form.lastSeenCity.trim() && !form.lastSeenAddress.trim())
-    return 'Ingresá la ciudad o la dirección donde fue visto por última vez';
+  // Ubicación: con GPS coords ó con ciudad ó con dirección — cualquiera alcanza
+  if (step === 2) {
+    const hasGps     = form.lastSeenLat !== '';
+    const hasCity    = form.lastSeenCity.trim().length > 0;
+    const hasAddress = form.lastSeenAddress.trim().length > 0;
+    if (!hasGps && !hasCity && !hasAddress)
+      return 'Ingresá la dirección o la ciudad donde fue visto por última vez';
+  }
   if (step === 3 && !form.contactValue.trim())    return 'El dato de contacto es obligatorio';
   return '';
 }
@@ -458,9 +463,9 @@ export default function ReportarPerdidoPage() {
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">
                 Ciudad
-                {form.lastSeenAddress.trim()
-                  ? <span className="text-gray-400 font-normal ml-1">(opcional si pusiste dirección)</span>
-                  : <span className="text-red-400 ml-1">*</span>
+                {(form.lastSeenAddress.trim() || form.lastSeenLat !== '')
+                  ? <span className="text-gray-400 font-normal ml-1">(opcional)</span>
+                  : <span className="text-red-400 ml-1"> *</span>
                 }
               </label>
               <input
