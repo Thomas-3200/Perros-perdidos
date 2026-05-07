@@ -128,7 +128,8 @@ function SharePanel({ c, onShare }: { c: CaseDetail; onShare: () => void }) {
   const [copied, setCopied] = useState(false);
 
   const publicUrl = `https://perros-perdidos-web.vercel.app/casos/${c.id}`;
-  const location  = c.lastSeenAddress || c.lastSeenCity || 'zona sin especificar';
+  const location  = [c.lastSeenAddress, c.lastSeenCity].filter(Boolean).join(', ')
+                  || (c.lastSeenLat ? `${c.lastSeenLat.toFixed(4)}, ${c.lastSeenLng.toFixed(4)}` : 'zona sin especificar');
   const breed     = c.dog.breed ? `${c.dog.breed}, ` : '';
   const colors    = c.dog.color.join(' y ');
   const contact   = c.contactMethod === 'whatsapp'
@@ -612,9 +613,21 @@ function CaseDetail() {
           <h2 className="font-semibold text-gray-800 text-sm mb-3">Último avistamiento</h2>
           <div className="flex items-start gap-2 text-sm text-gray-600">
             <MapPin className="w-4 h-4 text-brand-500 mt-0.5 shrink-0" />
-            <span>
-              {[c.lastSeenAddress, c.lastSeenCity].filter(Boolean).join(', ') || 'Sin dirección especificada'}
-            </span>
+            {(() => {
+              const text = [c.lastSeenAddress, c.lastSeenCity].filter(Boolean).join(', ');
+              if (text) return <span>{text}</span>;
+              if (c.lastSeenLat && c.lastSeenLng) return (
+                <a
+                  href={`https://www.google.com/maps?q=${c.lastSeenLat},${c.lastSeenLng}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand-600 underline underline-offset-2"
+                >
+                  Ver ubicación en mapa →
+                </a>
+              );
+              return <span className="text-gray-400">Sin dirección especificada</span>;
+            })()}
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <Clock className="w-4 h-4 text-brand-500 shrink-0" />

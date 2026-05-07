@@ -222,8 +222,13 @@ export default function ReportarPerdidoPage() {
           const road = addr.road ? `${addr.road}${addr.house_number ? ' ' + addr.house_number : ''}` : '';
           if (city) set('lastSeenCity',    city);
           if (road) set('lastSeenAddress', road);
+          // Si no se pudo extraer ciudad ni calle, usar display_name como fallback
+          if (!city && !road && geo.display_name) {
+            set('lastSeenAddress', geo.display_name.split(',').slice(0, 3).join(',').trim());
+          }
         } catch {
-          // silencioso — el usuario puede completar manualmente
+          // Fallback: guardar coordenadas como texto para que no quede vacío
+          set('lastSeenCity', `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
         }
 
         setGeoLoading(false);
