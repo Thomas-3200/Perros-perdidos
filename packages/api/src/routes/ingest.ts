@@ -20,24 +20,39 @@ const AI_TIMEOUT_MS = 60_000; // 60 segundos para que Claude procese la imagen
 export async function ingestRoutes(app: FastifyInstance) {
 
   // ── POST /social — Enviar caso desde red social ───────────────────────────
-  // Rate limit estricto: 5/día por usuario (cada llamada cuesta plata en API IA)
+  // Rate limit por IP (el keyGenerator corre antes del preHandler de auth,
+  // así que req.user todavía no está disponible). El control por usuario
+  // se hace con la query de count() de abajo.
   app.post('/social', {
     preHandler: requireAuth,
     config: {
       rawBody: false,
       rateLimit: {
-        max: 5,
-        timeWindow: '1 day',
-        keyGenerator: (req) => (req.user as { sub: string }).sub,
+        max: 30,                  // 30 imports por hora por IP
+        timeWindow: '1 hour',
       },
     },
   }, async (req, reply) => {
     const { sub } = req.user as { sub: string };
 
-    // Tope adicional global por DÍA: máximo 100 importaciones IA en toda la app
-    // (a ~$0.003 USD/imagen = ~$10 USD/mes en el peor caso)
+    // Tope por usuario por DÍA: 5 imports/usuario/día
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const userTodayCount = await prisma.importedSocialCase.count({
+      where: { submittedById: sub, createdAt: { gte: today } },
+    });
+    if (userTodayCount >= 5) {
+      return reply.code(429).send({
+        success: false,
+        error: {
+          code: 'USER_DAILY_QUOTA',
+          message: 'Alcanzaste el límite de 5 importaciones diarias. Volvé mañana.',
+        },
+      });
+    }
+
+    // Tope global por DÍA: máximo 100 importaciones IA en toda la app
+    // (a ~$0.003 USD/imagen = ~$10 USD/mes en el peor caso)
     const todayCount = await prisma.importedSocialCase.count({
       where: { createdAt: { gte: today } },
     });
