@@ -5,9 +5,9 @@ import useSWR from 'swr';
 import { api } from '@/lib/api';
 
 const STATS = [
-  { key: 'reunions',      label: 'Perros reunificados', href: '/reuniones'    },
-  { key: 'activeCases',   label: 'Casos activos hoy',   href: '/buscar'       },
-  { key: 'totalSightings',label: 'Avistamientos',        href: '/avistamientos'},
+  { key: 'reunions',      label: 'Volvieron a casa',  href: '/reuniones'    },
+  { key: 'activeCases',   label: 'Casos activos hoy', href: '/buscar'       },
+  { key: 'totalSightings',label: 'Vistos',            href: '/avistamientos'},
 ] as const;
 
 export function StatsBar() {

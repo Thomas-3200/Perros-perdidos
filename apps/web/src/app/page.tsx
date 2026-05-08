@@ -210,7 +210,7 @@ export default function HomePage() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
               <Eye className="w-5 h-5 text-brand-500" />
-              Avistados recientemente
+              Vistos recientemente
             </h2>
             <Link href="/avistamientos" className="text-brand-500 text-sm font-medium hover:underline">
               Ver todos →
@@ -251,9 +251,9 @@ export default function HomePage() {
         <div className="bg-hope-50 border border-hope-200 rounded-3xl p-5 flex items-center gap-4">
           <div className="text-3xl shrink-0">❤️</div>
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-gray-900 text-sm">Apoyá esta causa</p>
+            <p className="font-bold text-gray-900 text-sm">Es 100% gratuito</p>
             <p className="text-xs text-gray-500 leading-relaxed mt-0.5">
-              100% gratuito. Tu donación mantiene los servidores y la IA funcionando.
+              Las donaciones van destinadas a la mejora de la plataforma.
             </p>
           </div>
           <Link

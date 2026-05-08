@@ -12,7 +12,7 @@ const LINKS = [
   { href: '/',                 label: 'Inicio',   icon: Home       },
   { href: '/buscar',           label: 'Buscar',   icon: Search     },
   { href: '/reportar/perdido', label: 'Reportar', icon: PlusCircle },
-  { href: '/avistamientos',    label: 'Avistados', icon: Eye       },
+  { href: '/avistamientos',    label: 'Vistos',    icon: Eye       },
   { href: '/perfil',           label: 'Perfil',   icon: User       },
 ];
 

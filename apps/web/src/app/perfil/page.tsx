@@ -1031,8 +1031,8 @@ export default function PerfilPage() {
       >
         <Heart className="w-5 h-5 text-hope-500 fill-current shrink-0" />
         <div className="flex-1">
-          <p className="font-semibold text-gray-800 text-sm">Apoyá la plataforma</p>
-          <p className="text-xs text-gray-500">Donaciones voluntarias para mantener la app gratuita</p>
+          <p className="font-semibold text-gray-800 text-sm">Es 100% gratuito</p>
+          <p className="text-xs text-gray-500">Las donaciones van destinadas a la mejora de la plataforma</p>
         </div>
         <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
       </Link>

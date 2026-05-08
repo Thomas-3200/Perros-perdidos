@@ -120,7 +120,8 @@ export default function ReunionesPage() {
                 )}
                 <div className="absolute top-3 left-3 bg-hope-500 text-white text-xs font-bold
                                 px-3 py-1.5 rounded-full flex items-center gap-1.5">
-                  <Heart className="w-3.5 h-3.5 fill-current" /> Reunificado
+                  <Heart className="w-3.5 h-3.5 fill-current" />
+                  {daysAgo(s.publishedAt ?? s.lostCase.lastSeenAt)}
                 </div>
               </div>
 
@@ -137,7 +138,6 @@ export default function ReunionesPage() {
                     <MapPin className="w-3.5 h-3.5" /> {s.lostCase.lastSeenCity}
                   </span>
                 )}
-                <span>Reunificado {daysAgo(s.publishedAt ?? s.lostCase.lastSeenAt)}</span>
               </div>
               {excerpt && (
                 <p className="text-sm text-gray-600 leading-relaxed">{excerpt}</p>

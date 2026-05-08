@@ -53,6 +53,20 @@ export default function ReunionDetailPage() {
     Math.abs(Date.now() - new Date(s.lostCase.lastSeenAt).getTime()) / 86_400_000,
   );
 
+  // "hace X días/horas" desde la reunificación
+  function timeAgo(dateStr?: string): string {
+    if (!dateStr) return '';
+    const ms = Date.now() - new Date(dateStr).getTime();
+    const min = Math.floor(ms / 60_000);
+    const hr  = Math.floor(ms / 3_600_000);
+    const d   = Math.floor(ms / 86_400_000);
+    if (min < 1)  return 'recién';
+    if (min < 60) return `hace ${min} min`;
+    if (hr  < 24) return `hace ${hr} h`;
+    if (d   === 1) return 'ayer';
+    return `hace ${d} días`;
+  }
+
   return (
     <div className="max-w-2xl mx-auto">
       {/* Foto hero */}
@@ -66,7 +80,8 @@ export default function ReunionDetailPage() {
           <ChevronLeft className="w-5 h-5 text-gray-700" />
         </Link>
         <div className="absolute top-4 right-4 bg-hope-500 text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5">
-          <Heart className="w-3.5 h-3.5 fill-current" /> Reunificado
+          <Heart className="w-3.5 h-3.5 fill-current" />
+          {timeAgo(s.publishedAt)}
         </div>
       </div>
 

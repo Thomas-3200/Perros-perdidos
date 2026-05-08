@@ -88,11 +88,11 @@ export function ReunionFeed({ limit = 6 }: { limit?: number }) {
               )}
               {/* Overlay gradient */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
-              {/* Badge reunificado */}
+              {/* Badge con tiempo transcurrido */}
               <div className="absolute top-3 left-3 bg-hope-500 text-white text-xs font-bold
                               px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-md">
                 <Heart className="w-3.5 h-3.5 fill-current" />
-                Reunificado {daysAgo(reunionDate)}
+                {daysAgo(reunionDate)}
               </div>
               {/* Nombre sobre imagen */}
               <div className="absolute bottom-3 left-3 right-3">
