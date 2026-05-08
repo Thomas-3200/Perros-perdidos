@@ -18,12 +18,26 @@ interface Sighting {
   id:           string;
   locationCity?: string;
   seenAt:       string;
+  createdAt?:   string;
   photos:       string[];
   dogStatus:    string;
 }
 
-function timeAgo(dateStr: string): string {
-  const diff  = Date.now() - new Date(dateStr).getTime();
+/**
+ * Devuelve "hace X" usando la fecha más reciente entre createdAt y seenAt.
+ *
+ * Por qué: cuando se importa de redes sociales, la IA a veces lee fechas
+ * viejas del post (ej: "se perdió el 8/01" → 2025) y las pone en seenAt.
+ * Eso hace que aparezca "hace 484 días" aunque el reporte sea de hoy.
+ * Usamos createdAt (cuándo se reportó EN LA APP) como verdad de referencia.
+ */
+function timeAgo(s: Sighting): string {
+  // Preferimos createdAt; caemos a seenAt si no está
+  const reference = s.createdAt
+    ? new Date(s.createdAt).getTime()
+    : new Date(s.seenAt).getTime();
+
+  const diff  = Date.now() - reference;
   const mins  = Math.floor(diff / 60_000);
   const hours = Math.floor(diff / 3_600_000);
   const days  = Math.floor(diff / 86_400_000);
@@ -93,7 +107,7 @@ function RecentSightings() {
           )}
           {/* Time */}
           <span className="absolute bottom-1.5 left-1.5 right-1.5 text-white text-[10px] font-semibold leading-tight">
-            {s.locationCity ? `${s.locationCity} · ` : ''}{timeAgo(s.seenAt)}
+            {s.locationCity ? `${s.locationCity} · ` : ''}{timeAgo(s)}
           </span>
         </Link>
       ))}
