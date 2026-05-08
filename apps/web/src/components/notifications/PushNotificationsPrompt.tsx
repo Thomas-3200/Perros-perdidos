@@ -106,10 +106,11 @@ export function PushNotificationsPrompt({ variant = 'banner', onDismiss }: Props
       const vapidKey = vapidRes?.data?.publicKey;
       if (!vapidKey) throw new Error('VAPID key no disponible en el servidor');
 
-      // 4. Crear subscription
+      // 4. Crear subscription (cast a BufferSource para satisfacer
+      //    el tipado más estricto de TS que viene con lib.dom recientes)
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidKey),
+        applicationServerKey: urlBase64ToUint8Array(vapidKey) as BufferSource,
       });
 
       // 5. Enviar al backend
