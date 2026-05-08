@@ -61,6 +61,22 @@ function Lightbox({ photos, startIdx, onClose }: { photos: string[]; startIdx: n
     return () => document.removeEventListener('keydown', fn);
   }, [onClose, photos.length]);
 
+  // Interceptar el botón "atrás" del navegador/celular para cerrar el lightbox
+  // en vez de navegar a la página anterior. Empujamos un estado al historial al
+  // montar y, cuando el usuario hace back, capturamos popstate y cerramos.
+  useEffect(() => {
+    let popped = false;
+    window.history.pushState({ lightbox: true }, '');
+    const handle = () => { popped = true; onClose(); };
+    window.addEventListener('popstate', handle);
+    return () => {
+      window.removeEventListener('popstate', handle);
+      // Si el lightbox se cierra por X o ESC (no por back), removemos el state
+      // que empujamos para no dejar entradas zombi en el history.
+      if (!popped) window.history.back();
+    };
+  }, [onClose]);
+
   return (
     <div
       className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center"
@@ -144,6 +160,18 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
     const fn = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', fn);
     return () => document.removeEventListener('keydown', fn);
+  }, [onClose]);
+
+  // Botón atrás del navegador/celular cierra el modal en vez de navegar fuera
+  useEffect(() => {
+    let popped = false;
+    window.history.pushState({ sightingModal: true }, '');
+    const handle = () => { popped = true; onClose(); };
+    window.addEventListener('popstate', handle);
+    return () => {
+      window.removeEventListener('popstate', handle);
+      if (!popped) window.history.back();
+    };
   }, [onClose]);
 
   // Bloquear scroll del body

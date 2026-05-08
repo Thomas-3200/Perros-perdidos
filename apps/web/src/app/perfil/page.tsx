@@ -401,6 +401,18 @@ function ImportDetailModal({
   const isImageUrl = imp.rawInput.startsWith('http') &&
     (imp.sourceType === 'screenshot' || imp.sourceType === 'photo');
 
+  // Botón "atrás" del navegador/celular cierra el modal en vez de navegar fuera
+  useEffect(() => {
+    let popped = false;
+    window.history.pushState({ importModal: true }, '');
+    const handle = () => { popped = true; onClose(); };
+    window.addEventListener('popstate', handle);
+    return () => {
+      window.removeEventListener('popstate', handle);
+      if (!popped) { try { window.history.back(); } catch {} }
+    };
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40">
       <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
