@@ -2,9 +2,19 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { MapPin, Camera, Share2, Bell, X, Check, Loader2 } from 'lucide-react';
+import { Bell, Camera, Share2, X, Check, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { isLoggedIn } from '@/lib/auth';
+
+/* ── Texto y URLs para compartir ─────────────────────────────────────────── */
+const SHARE_URL  = 'https://perros-perdidos-web.vercel.app';
+const SHARE_TEXT = `🐾 Estoy ayudando a Perros Perdidos, una plataforma gratuita que cruza con IA los perros perdidos con los avistamientos que reporta la gente y avisa al dueño automáticamente.
+
+Si conocés a alguien que perdió un perro o querés ayudar a buscar, sumate:
+${SHARE_URL}`;
+
+const WHATSAPP_URL = `https://wa.me/?text=${encodeURIComponent(SHARE_TEXT)}`;
+const FACEBOOK_URL = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(SHARE_URL)}&quote=${encodeURIComponent(SHARE_TEXT)}`;
 
 /* ── Toast ─────────────────────────────────────────────────────────────── */
 function Toast({ message, onClose }: { message: string; onClose: () => void }) {
@@ -26,11 +36,9 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
 /* ── Page ───────────────────────────────────────────────────────────────── */
 export default function AyudarPage() {
   const [toast,         setToast]         = useState('');
-  const [helperMode,    setHelperMode]    = useState(false);
-  const [alertActive,   setAlertActive]   = useState(false);
+  const [alertsActive,  setAlertsActive]  = useState(false);
   const [city,          setCity]          = useState('');
-  const [loadingHelper, setLoadingHelper] = useState(false);
-  const [loadingAlert,  setLoadingAlert]  = useState(false);
+  const [loadingAlerts, setLoadingAlerts] = useState(false);
   const [loggedIn,      setLoggedIn]      = useState(false);
 
   // Leer estado actual del usuario
@@ -42,8 +50,10 @@ export default function AyudarPage() {
     api.users.me()
       .then((res: unknown) => {
         const r = res as { data: { helperMode?: boolean; alertCity?: string } };
-        if (r.data.helperMode)  setHelperMode(true);
-        if (r.data.alertCity)   { setAlertActive(true); setCity(r.data.alertCity); }
+        if (r.data.helperMode || r.data.alertCity) {
+          setAlertsActive(true);
+          if (r.data.alertCity) setCity(r.data.alertCity);
+        }
       })
       .catch(() => {});
   }, []);
@@ -53,102 +63,73 @@ export default function AyudarPage() {
     setTimeout(() => setToast(''), 5000);
   }
 
-  /* ── Activar / desactivar modo búsqueda (geolocalización) ── */
-  async function toggleHelperMode() {
-    if (!loggedIn) {
-      showToast('Iniciá sesión para activar el modo búsqueda.');
-      return;
-    }
-
-    if (helperMode) {
-      // Desactivar
-      setLoadingHelper(true);
-      try {
-        await api.users.updateMe({ helperMode: false });
-        setHelperMode(false);
-        showToast('Modo búsqueda desactivado.');
-      } catch { showToast('Error al desactivar. Intentá de nuevo.'); }
-      finally { setLoadingHelper(false); }
-      return;
-    }
-
-    // Activar — pedir ubicación
-    setLoadingHelper(true);
-    try {
-      let detectedCity = city;
-
-      if (!detectedCity) {
-        // Intentar geolocalización
-        try {
-          const pos = await new Promise<GeolocationPosition>((res, rej) =>
-            navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000 })
-          );
-          // Reverse geocode con nominatim (gratis, sin key)
-          const geoRes = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`
-          );
-          const geoData = await geoRes.json() as { address?: { city?: string; town?: string; village?: string; county?: string } };
-          detectedCity = geoData.address?.city
-            ?? geoData.address?.town
-            ?? geoData.address?.village
-            ?? geoData.address?.county
-            ?? '';
-        } catch {
-          // Si falla geolocalización, usar ciudad del perfil o pedir
-          detectedCity = '';
-        }
-      }
-
-      if (!detectedCity) {
-        showToast('No pudimos detectar tu ubicación. Primero suscribite a alertas con tu ciudad.');
-        setLoadingHelper(false);
-        return;
-      }
-
-      await api.users.updateMe({ helperMode: true, alertCity: detectedCity });
-      setHelperMode(true);
-      setAlertActive(true);
-      setCity(detectedCity);
-      showToast(`Modo búsqueda activo en ${detectedCity}. Te avisamos cuando haya casos cerca.`);
-    } catch { showToast('Error al activar. Intentá de nuevo.'); }
-    finally { setLoadingHelper(false); }
-  }
-
-  /* ── Suscribirse / desuscribirse a alertas de zona ── */
+  /* ── Activar / desactivar alertas (unifica modo búsqueda + suscripción) ── */
   async function toggleAlerts() {
     if (!loggedIn) {
-      showToast('Iniciá sesión para suscribirte a alertas.');
+      showToast('Iniciá sesión para activar las alertas.');
       return;
     }
 
-    if (alertActive) {
-      // Desactivar
-      setLoadingAlert(true);
+    // ── Desactivar ─────────────────────────────────────────────────────
+    if (alertsActive) {
+      setLoadingAlerts(true);
       try {
         await api.users.updateMe({ helperMode: false, alertCity: '' });
-        setAlertActive(false);
-        setHelperMode(false);
+        setAlertsActive(false);
         setCity('');
         showToast('Alertas desactivadas.');
-      } catch { showToast('Error al desactivar. Intentá de nuevo.'); }
-      finally { setLoadingAlert(false); }
+      } catch {
+        showToast('Error al desactivar. Intentá de nuevo.');
+      } finally {
+        setLoadingAlerts(false);
+      }
       return;
     }
 
-    // Activar — pedir ciudad
-    const inputCity = window.prompt('¿En qué ciudad querés recibir alertas?\nEjemplo: Buenos Aires, Córdoba, Rosario');
-    if (!inputCity?.trim()) return;
+    // ── Activar — primero intentamos geolocalización, si falla pedimos ciudad ──
+    setLoadingAlerts(true);
+    let detectedCity = '';
 
-    setLoadingAlert(true);
     try {
-      const trimmedCity = inputCity.trim();
-      await api.users.updateMe({ helperMode: true, alertCity: trimmedCity });
-      setAlertActive(true);
-      setHelperMode(true);
-      setCity(trimmedCity);
-      showToast(`¡Listo! Te avisamos cuando reporten casos en ${trimmedCity}.`);
-    } catch { showToast('Error al guardar. Intentá de nuevo.'); }
-    finally { setLoadingAlert(false); }
+      const pos = await new Promise<GeolocationPosition>((res, rej) =>
+        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000 })
+      );
+      const geoRes = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`,
+        { headers: { 'Accept-Language': 'es' } },
+      );
+      const geoData = await geoRes.json() as { address?: { city?: string; town?: string; village?: string; county?: string; state?: string } };
+      detectedCity = geoData.address?.city
+        ?? geoData.address?.town
+        ?? geoData.address?.village
+        ?? geoData.address?.county
+        ?? geoData.address?.state
+        ?? '';
+    } catch {
+      // Geolocalización rechazada o fallida — seguimos al fallback de prompt
+    }
+
+    // Si no detectamos, le pedimos al usuario manualmente
+    if (!detectedCity) {
+      setLoadingAlerts(false);
+      const inputCity = window.prompt(
+        'No pudimos detectar tu ubicación.\n\n¿En qué ciudad querés recibir alertas?\nEjemplo: Buenos Aires, Córdoba, Avellaneda',
+      );
+      if (!inputCity?.trim()) return;
+      detectedCity = inputCity.trim();
+      setLoadingAlerts(true);
+    }
+
+    try {
+      await api.users.updateMe({ helperMode: true, alertCity: detectedCity });
+      setAlertsActive(true);
+      setCity(detectedCity);
+      showToast(`¡Listo! Te avisamos cuando reporten casos en ${detectedCity}.`);
+    } catch {
+      showToast('Error al activar. Intentá de nuevo.');
+    } finally {
+      setLoadingAlerts(false);
+    }
   }
 
   return (
@@ -196,76 +177,82 @@ export default function AyudarPage() {
           </div>
         </Link>
 
-        {/* ── Activar modo búsqueda ── */}
+        {/* ── Recibir alertas de tu zona (unificado) ── */}
         <button
-          onClick={toggleHelperMode}
-          disabled={loadingHelper}
+          onClick={toggleAlerts}
+          disabled={loadingAlerts}
           className={`card flex items-start gap-4 transition-all text-left w-full ${
-            helperMode
+            alertsActive
               ? 'border-2 border-orange-400 bg-orange-50'
               : 'hover:shadow-md'
           }`}
         >
-          <div className={`rounded-xl p-3 shrink-0 ${helperMode ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-600'}`}>
-            <MapPin className="w-5 h-5" />
-          </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <h2 className="font-semibold text-gray-800 text-sm">Activar modo búsqueda</h2>
-              {helperMode
-                ? <span className="text-[10px] bg-orange-500 text-white font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
-                    <Check className="w-2.5 h-2.5" /> Activo
-                  </span>
-                : null
-              }
-            </div>
-            <p className="text-gray-500 text-xs mt-0.5">
-              {helperMode && city
-                ? `Recibís alertas de casos en ${city}. Tocá para desactivar.`
-                : 'Recibí alertas de casos cercanos a vos usando tu ubicación.'}
-            </p>
-          </div>
-          {loadingHelper && <Loader2 className="w-4 h-4 animate-spin text-orange-500 shrink-0 self-center" />}
-        </button>
-
-        {/* ── Suscribirse a alertas ── */}
-        <button
-          onClick={toggleAlerts}
-          disabled={loadingAlert}
-          className={`card flex items-start gap-4 transition-all text-left w-full ${
-            alertActive
-              ? 'border-2 border-green-400 bg-green-50'
-              : 'hover:shadow-md'
-          }`}
-        >
-          <div className={`rounded-xl p-3 shrink-0 ${alertActive ? 'bg-green-500 text-white' : 'bg-green-50 text-green-600'}`}>
+          <div className={`rounded-xl p-3 shrink-0 ${alertsActive ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-600'}`}>
             <Bell className="w-5 h-5" />
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2">
-              <h2 className="font-semibold text-gray-800 text-sm">Suscribirse a alertas</h2>
-              {alertActive
-                ? <span className="text-[10px] bg-green-500 text-white font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
-                    <Check className="w-2.5 h-2.5" /> Activo
-                  </span>
-                : null
-              }
+              <h2 className="font-semibold text-gray-800 text-sm">Recibir alertas de tu zona</h2>
+              {alertsActive && (
+                <span className="text-[10px] bg-orange-500 text-white font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <Check className="w-2.5 h-2.5" /> Activo
+                </span>
+              )}
             </div>
             <p className="text-gray-500 text-xs mt-0.5">
-              {alertActive && city
-                ? `Notificaciones activas para ${city}. Tocá para desactivar.`
-                : 'Elegí tu ciudad y te avisamos cuando reporten casos nuevos.'}
+              {alertsActive && city
+                ? `Recibís avisos cuando reportan perros perdidos en ${city}. Tocá para desactivar.`
+                : 'Te avisamos al instante cuando alguien reporte un perro perdido cerca tuyo.'}
             </p>
           </div>
-          {loadingAlert && <Loader2 className="w-4 h-4 animate-spin text-green-500 shrink-0 self-center" />}
+          {loadingAlerts && <Loader2 className="w-4 h-4 animate-spin text-orange-500 shrink-0 self-center" />}
         </button>
+
+        {/* ── Ayudar a compartir ── */}
+        <div className="card border-2 border-brand-100 bg-brand-50/40">
+          <div className="flex items-start gap-4 mb-3">
+            <div className="rounded-xl p-3 bg-brand-50 text-brand-600 shrink-0">
+              <Share2 className="w-5 h-5" />
+            </div>
+            <div className="flex-1">
+              <h2 className="font-semibold text-gray-800 text-sm">Ayudá a compartir</h2>
+              <p className="text-gray-500 text-xs mt-0.5">
+                Cuanta más gente conozca la app, más rápido se reúnen los perros con sus familias.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <a
+              href={WHATSAPP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 bg-[#25D366] text-white font-semibold text-sm py-2.5 rounded-xl hover:bg-[#1ebe5d] transition-colors"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.890-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              </svg>
+              WhatsApp
+            </a>
+            <a
+              href={FACEBOOK_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 bg-[#1877F2] text-white font-semibold text-sm py-2.5 rounded-xl hover:bg-[#166fe5] transition-colors"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+              </svg>
+              Facebook
+            </a>
+          </div>
+        </div>
 
       </div>
 
       <div className="mt-8 p-4 bg-brand-50 rounded-2xl border border-brand-100">
-        <p className="text-brand-700 text-xs font-medium">
-          Las alertas llegan al ícono de notificaciones en tu perfil.
-          Cada reporte puede ser la clave que una familia estaba esperando. Gracias por ser parte de esta red.
+        <p className="text-brand-700 text-xs font-medium leading-relaxed">
+          Cada reporte y cada compartido puede ser la clave que una familia estaba esperando.
+          Gracias por ser parte de esta red 🐾
         </p>
       </div>
     </div>
