@@ -12,9 +12,17 @@ interface Props {
   onFile: (file: File) => void;
   multiple?: boolean;
   onFiles?: (files: File[]) => void;
+  /**
+   * Si true, oculta el botón de Cámara y muestra solo Galería con un botón
+   * más grande y un label personalizable. Útil para flujos donde una foto
+   * tomada en el momento no tiene sentido (ej: subir un screenshot).
+   */
+  galleryOnly?: boolean;
+  /** Texto del botón cuando galleryOnly = true */
+  galleryLabel?: string;
 }
 
-export function PhotoPicker({ onFile, multiple, onFiles }: Props) {
+export function PhotoPicker({ onFile, multiple, onFiles, galleryOnly, galleryLabel }: Props) {
   const cameraRef  = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
@@ -30,6 +38,35 @@ export function PhotoPicker({ onFile, multiple, onFiles }: Props) {
     e.target.value = '';
   }
 
+  // ── Variante: solo galería, botón único grande ─────────────────────────
+  if (galleryOnly) {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => galleryRef.current?.click()}
+          className="w-full flex flex-col items-center gap-3 py-10 rounded-2xl border-2 border-dashed border-gray-300
+                     hover:border-brand-400 hover:bg-brand-50 transition-colors active:scale-[0.98]"
+        >
+          <ImageIcon className="w-10 h-10 text-brand-500" />
+          <span className="text-base font-semibold text-gray-700">
+            {galleryLabel ?? 'Subir desde galería'}
+          </span>
+          <span className="text-xs text-gray-400">JPG, PNG o HEIC</span>
+        </button>
+        <input
+          ref={galleryRef}
+          type="file"
+          accept="image/*"
+          multiple={multiple}
+          className="sr-only"
+          onChange={handleChange}
+        />
+      </>
+    );
+  }
+
+  // ── Variante default: cámara + galería ──────────────────────────────────
   return (
     <div className="flex gap-3 w-full">
       {/* Cámara */}

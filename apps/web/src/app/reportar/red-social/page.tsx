@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileText, Image as ImageIcon, Sparkles, ChevronLeft, Check, Loader2, AlertTriangle, XCircle } from 'lucide-react';
+import { Sparkles, ChevronLeft, Check, Loader2, AlertTriangle, XCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { isLoggedIn } from '@/lib/auth';
 import { AuthModal } from '@/components/auth/AuthModal';
@@ -37,13 +37,10 @@ async function warmUp(): Promise<void> {
   try { await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(45_000) }); } catch {}
 }
 
-type InputMode   = 'image' | 'text';
 type ResultState = 'processed' | 'rejected' | 'pending' | null;
 
 export default function ReportarRedSocialPage() {
   const router  = useRouter();
-  const [mode,      setMode]      = useState<InputMode>('image');
-  const [text,      setText]      = useState('');
   const [image,     setImage]     = useState<File | null>(null);
   const [loading,   setLoading]   = useState(false);
   const [result,    setResult]    = useState<ResultState>(null);
@@ -67,20 +64,17 @@ export default function ReportarRedSocialPage() {
 
       let res: { aiProcessed?: boolean; aiError?: string; message?: string; data?: { status?: string } } = {};
 
-      if (mode === 'image' && image) {
-        // 2️⃣ Comprimir imagen (de 3-5MB a ~300KB) antes de enviar
-        setLoadingHint('Preparando imagen…');
-        const compressed = await compressImage(image);
-        setLoadingHint('Analizando con IA… (puede tardar hasta 30 seg)');
+      if (!image) throw new Error('Subí una captura de pantalla');
 
-        const fd = new FormData();
-        fd.append('files', compressed);
-        fd.append('sourceType', 'screenshot');
-        res = await api.ingest.submitImage(fd) as typeof res;
-      } else if (mode === 'text') {
-        setLoadingHint('Analizando con IA…');
-        res = await api.ingest.submitText(text) as typeof res;
-      }
+      // 2️⃣ Comprimir imagen (de 3-5MB a ~300KB) antes de enviar
+      setLoadingHint('Preparando imagen…');
+      const compressed = await compressImage(image);
+      setLoadingHint('Analizando con IA… (puede tardar hasta 30 seg)');
+
+      const fd = new FormData();
+      fd.append('files', compressed);
+      fd.append('sourceType', 'screenshot');
+      res = await api.ingest.submitImage(fd) as typeof res;
 
       if (res?.aiError) setDebugInfo(res.aiError);
       const status = (res?.data as { status?: string })?.status ?? 'pending';
@@ -98,7 +92,7 @@ export default function ReportarRedSocialPage() {
     await handleSubmit();
   }
 
-  const canSubmit = (mode === 'image' && image) || (mode === 'text' && text.trim().length > 10);
+  const canSubmit = !!image;
 
   /* ── Pantalla de resultado ────────────────────────────────────────────────── */
   if (result !== null) {
@@ -219,7 +213,7 @@ export default function ReportarRedSocialPage() {
             )}
             {isRejected && (
               <button
-                onClick={() => { setResult(null); setImage(null); setText(''); }}
+                onClick={() => { setResult(null); setImage(null); }}
                 className="btn-primary w-full"
               >
                 Intentar de nuevo
@@ -259,95 +253,38 @@ export default function ReportarRedSocialPage() {
           <div>
             <p className="text-sm font-semibold text-brand-700">¿Viste un post de perro perdido?</p>
             <p className="text-xs text-brand-600 mt-1">
-              Sacá un screenshot o pegá el texto del post.
-              La IA extrae automáticamente todos los datos importantes.
+              Sacá una captura de pantalla del post (Facebook, Instagram o WhatsApp)
+              y subila acá. La IA extrae automáticamente todos los datos.
             </p>
           </div>
         </div>
 
-        {/* Selector de modo */}
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={() => setMode('image')}
-            className={clsx(
-              'flex flex-col items-center gap-2 py-4 rounded-2xl border-2 text-sm font-semibold transition-colors relative',
-              mode === 'image'
-                ? 'border-brand-500 bg-brand-50 text-brand-600'
-                : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300',
-            )}
-          >
-            <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[10px] bg-hope-500 text-white font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
-              ⭐ Recomendado
-            </span>
-            <ImageIcon className="w-6 h-6" />
-            📸 Screenshot del post
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setMode('text')}
-            className={clsx(
-              'flex flex-col items-center gap-2 py-4 rounded-2xl border-2 text-sm font-semibold transition-colors',
-              mode === 'text'
-                ? 'border-brand-500 bg-brand-50 text-brand-600'
-                : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300',
-            )}
-          >
-            <FileText className="w-6 h-6" />
-            📝 Pegar texto
-          </button>
-        </div>
-
-        {/* Input según modo */}
-        {mode === 'image' && (
-          <div className="space-y-3">
-            <p className="text-xs text-gray-500 text-center">
-              Sacá captura de pantalla del post de Facebook, WhatsApp o Instagram y subila acá
-            </p>
-            {image && (
-              <div className="relative rounded-2xl overflow-hidden border border-gray-200">
-                <img
-                  src={URL.createObjectURL(image)}
-                  alt="preview"
-                  className="w-full max-h-64 object-contain bg-gray-50"
-                />
-                <button
-                  onClick={() => setImage(null)}
-                  className="absolute top-2 right-2 bg-white/90 rounded-full p-1 shadow"
-                >
-                  <XCircle className="w-5 h-5 text-gray-500" />
-                </button>
-              </div>
-            )}
-            {!image && <PhotoPicker onFile={f => setImage(f)} />}
-          </div>
-        )}
-
-        {mode === 'text' && (
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">
-              Pegá el texto del post
-            </label>
-            <textarea
-              className="input resize-none h-44"
-              placeholder="Copiá y pegá acá el texto completo del post con la descripción del perro perdido, nombre, zona, contacto..."
-              value={text}
-              onChange={e => setText(e.target.value)}
+        {/* Upload de captura */}
+        <div className="space-y-3">
+          <label className="block text-sm font-semibold text-gray-700">
+            Captura de pantalla del post
+          </label>
+          {image ? (
+            <div className="relative rounded-2xl overflow-hidden border border-gray-200">
+              <img
+                src={URL.createObjectURL(image)}
+                alt="preview"
+                className="w-full max-h-72 object-contain bg-gray-50"
+              />
+              <button
+                onClick={() => setImage(null)}
+                className="absolute top-2 right-2 bg-white/90 rounded-full p-1 shadow hover:bg-white transition-colors"
+              >
+                <XCircle className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+          ) : (
+            <PhotoPicker
+              galleryOnly
+              galleryLabel="Subir captura de pantalla"
+              onFile={f => setImage(f)}
             />
-            <p className="text-xs text-gray-400">
-              Incluí toda la info que puedas: nombre, raza, color, zona, teléfono de contacto.
-            </p>
-          </div>
-        )}
-
-        {/* Aviso: links de Facebook no funcionan */}
-        <div className="flex items-start gap-2 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3">
-          <AlertTriangle className="w-4 h-4 text-yellow-600 mt-0.5 shrink-0" />
-          <p className="text-xs text-yellow-700">
-            <strong>¿Tenés solo el link?</strong> Los links de Facebook e Instagram requieren login y la IA no puede leerlos.
-            Usá screenshot o copiá el texto del post en su lugar.
-          </p>
+          )}
         </div>
 
         {/* Hint de carga progresivo */}
