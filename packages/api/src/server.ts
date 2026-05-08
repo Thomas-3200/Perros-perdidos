@@ -78,9 +78,12 @@ async function bootstrap() {
   });
 
   // ── Healthcheck ────────────────────────────────────────────────────────────
+  // El campo `version` cambia con cada deploy y nos sirve para verificar
+  // desde el frontend / scripts si la API ya redeployó el código nuevo.
   app.get('/health', async () => ({
     status:    'ok',
     service:   'perros-perdidos-api',
+    version:   '2026-05-08-multiimage', // bump manual en cada deploy importante
     timestamp: new Date().toISOString(),
     workers:   'running',
   }));
