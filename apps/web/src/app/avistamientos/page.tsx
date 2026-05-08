@@ -19,6 +19,7 @@ interface SightingItem {
   dogStatus:        string;
   description?:     string;
   source:           string;
+  contactPhone?:    string;   // Teléfono del DUEÑO del perro (extraído del post original)
   matchCount?:      number;
   reporter?: {
     name: string;
@@ -266,6 +267,31 @@ function SightingModal({ s, onClose }: { s: SightingItem; onClose: () => void })
           {/* Descripción */}
           {data.description && (
             <p className="text-sm text-gray-700 leading-relaxed">{data.description}</p>
+          )}
+
+          {/* Contacto del DUEÑO del perro perdido (si vino en el post original).
+              Aparece arriba del contacto del reporter porque es la persona
+              prioritaria a contactar — el que perdió al perro. */}
+          {data.contactPhone && (
+            <a
+              href={`https://wa.me/${data.contactPhone.replace(/\D/g, '')}?text=${encodeURIComponent('Hola, vi un avistamiento en Perros Perdidos que podría ser tu perro. Te paso la info.')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between gap-3 bg-hope-50 border border-hope-200 rounded-2xl px-4 py-3 hover:bg-hope-100 transition-colors"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 bg-[#25D366] rounded-full flex items-center justify-center shrink-0">
+                  <MessageCircle className="w-5 h-5 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-800">Contactar al dueño</p>
+                  <p className="text-xs text-gray-500 truncate">
+                    {data.contactPhone} · del post original
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
+            </a>
           )}
 
           {/* Datos */}

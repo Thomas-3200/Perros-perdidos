@@ -39,9 +39,11 @@ async function warmUp(): Promise<void> {
 
 type ResultState = 'processed' | 'rejected' | 'pending' | null;
 
+const MAX_IMAGES = 2;
+
 export default function ReportarRedSocialPage() {
   const router  = useRouter();
-  const [image,     setImage]     = useState<File | null>(null);
+  const [images,    setImages]    = useState<File[]>([]);
   const [loading,   setLoading]   = useState(false);
   const [result,    setResult]    = useState<ResultState>(null);
   const [debugInfo, setDebugInfo] = useState('');
@@ -49,6 +51,14 @@ export default function ReportarRedSocialPage() {
   const [showAuth,  setShowAuth]  = useState(false);
 
   const [loadingHint, setLoadingHint] = useState('');
+
+  function addImages(newFiles: File[]) {
+    setImages(prev => [...prev, ...newFiles].slice(0, MAX_IMAGES));
+  }
+
+  function removeImage(index: number) {
+    setImages(prev => prev.filter((_, i) => i !== index));
+  }
 
   async function handleSubmit() {
     if (!isLoggedIn()) { setShowAuth(true); return; }
@@ -64,15 +74,17 @@ export default function ReportarRedSocialPage() {
 
       let res: { aiProcessed?: boolean; aiError?: string; message?: string; data?: { status?: string } } = {};
 
-      if (!image) throw new Error('Subí una captura de pantalla');
+      if (images.length === 0) throw new Error('Subí al menos una captura de pantalla');
 
-      // 2️⃣ Comprimir imagen (de 3-5MB a ~300KB) antes de enviar
-      setLoadingHint('Preparando imagen…');
-      const compressed = await compressImage(image);
+      // 2️⃣ Comprimir TODAS las imágenes en paralelo (de 3-5MB a ~300KB c/u)
+      setLoadingHint('Preparando imágenes…');
+      const compressed = await Promise.all(images.map(img => compressImage(img)));
       setLoadingHint('Analizando con IA… (puede tardar hasta 30 seg)');
 
+      // 3️⃣ Subir todas como FormData multipart — el backend acepta múltiples
+      // archivos en el campo 'files' y los procesa juntos.
       const fd = new FormData();
-      fd.append('files', compressed);
+      compressed.forEach(file => fd.append('files', file));
       fd.append('sourceType', 'screenshot');
       res = await api.ingest.submitImage(fd) as typeof res;
 
@@ -92,7 +104,7 @@ export default function ReportarRedSocialPage() {
     await handleSubmit();
   }
 
-  const canSubmit = !!image;
+  const canSubmit = images.length > 0;
 
   /* ── Pantalla de resultado ────────────────────────────────────────────────── */
   if (result !== null) {
@@ -213,7 +225,7 @@ export default function ReportarRedSocialPage() {
             )}
             {isRejected && (
               <button
-                onClick={() => { setResult(null); setImage(null); }}
+                onClick={() => { setResult(null); setImages([]); }}
                 className="btn-primary w-full"
               >
                 Intentar de nuevo
@@ -253,36 +265,66 @@ export default function ReportarRedSocialPage() {
           <div>
             <p className="text-sm font-semibold text-brand-700">¿Viste un post de perro perdido?</p>
             <p className="text-xs text-brand-600 mt-1">
-              Sacá una captura de pantalla del post (Facebook, Instagram o WhatsApp)
-              y subila acá. La IA extrae automáticamente todos los datos.
+              Subí <strong>1 o 2 capturas</strong> del post (Facebook, Instagram o WhatsApp).
+              La IA cruza la información para extraer la ubicación lo más precisa posible.
             </p>
           </div>
         </div>
 
-        {/* Upload de captura */}
+        {/* Upload de capturas (hasta 2) */}
         <div className="space-y-3">
-          <label className="block text-sm font-semibold text-gray-700">
-            Captura de pantalla del post
-          </label>
-          {image ? (
-            <div className="relative rounded-2xl overflow-hidden border border-gray-200">
-              <img
-                src={URL.createObjectURL(image)}
-                alt="preview"
-                className="w-full max-h-72 object-contain bg-gray-50"
-              />
-              <button
-                onClick={() => setImage(null)}
-                className="absolute top-2 right-2 bg-white/90 rounded-full p-1 shadow hover:bg-white transition-colors"
-              >
-                <XCircle className="w-5 h-5 text-gray-500" />
-              </button>
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-semibold text-gray-700">
+              Capturas de pantalla del post
+            </label>
+            <span className="text-xs text-gray-400">
+              {images.length}/{MAX_IMAGES}
+            </span>
+          </div>
+
+          <p className="text-xs text-gray-500 leading-relaxed">
+            💡 Si la dirección no está en la misma captura que la foto del perro,
+            agregá una segunda con la info que falta (dirección, contacto, etc.).
+          </p>
+
+          {/* Previews de las imágenes ya subidas */}
+          {images.length > 0 && (
+            <div className="grid grid-cols-2 gap-2">
+              {images.map((img, i) => (
+                <div key={i} className="relative rounded-2xl overflow-hidden border border-gray-200 aspect-square bg-gray-50">
+                  <img
+                    src={URL.createObjectURL(img)}
+                    alt={`captura ${i + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                  <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                    {i + 1}
+                  </span>
+                  <button
+                    onClick={() => removeImage(i)}
+                    className="absolute top-2 right-2 bg-white/90 rounded-full p-1 shadow hover:bg-white transition-colors"
+                    type="button"
+                  >
+                    <XCircle className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+              ))}
             </div>
-          ) : (
+          )}
+
+          {/* Botón para agregar más (oculto si ya alcanzamos el máximo) */}
+          {images.length < MAX_IMAGES && (
             <PhotoPicker
+              key={images.length /* fuerza remount al agregar */}
               galleryOnly
-              galleryLabel="Subir captura de pantalla"
-              onFile={f => setImage(f)}
+              multiple
+              galleryLabel={
+                images.length === 0
+                  ? 'Subir captura de pantalla'
+                  : 'Agregar otra captura'
+              }
+              onFile={f => addImages([f])}
+              onFiles={fs => addImages(fs)}
             />
           )}
         </div>

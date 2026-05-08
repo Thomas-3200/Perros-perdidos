@@ -38,14 +38,23 @@ function buildExtractionPrompt(): string {
 
 Analiza el contenido provisto (puede ser texto de un post, un screenshot de red social, o una fotografía) y extraé toda la información posible con MÁXIMO detalle.
 
+🎯 PRIORIDAD #1 — LA UBICACIÓN ES LO MÁS IMPORTANTE
+La app SOLO sirve si sabe DÓNDE fue visto el perro. Buscá la ubicación con OBSESIÓN:
+- Leé el texto completo del post (todas las líneas, los comentarios visibles, las hashtags)
+- Si hay 2 imágenes, mirá AMBAS — a veces la dirección está en una y el perro en otra
+- Buscá nombres de calles, intersecciones, números de altura, plazas, parques, estaciones de tren/subte, supermercados, escuelas, colegios — cualquier referencia geográfica
+- Buscá el barrio o localidad (Caballito, Avellaneda, San Isidro, Belgrano, etc.)
+- Si solo dice "zona X" o "barrio Y", usá eso
+- Si solo dice "BA" o "CABA", marcá ciudad="Buenos Aires"
+- Si NADA de ubicación aparece, devolvé null en address y city — NO inventes
+- Para lat/lng: si tenés ciudad/barrio, devolvé las coordenadas APROXIMADAS de esa zona (ej: Avellaneda ≈ -34.6611, -58.3651)
+
 IMPORTANTE — extraé SIEMPRE que puedas:
 - Raza del perro (aunque sea aproximada: "labrador", "mestizo", "poodle", etc.)
 - Colores exactos (marrón, negro, blanco, manchas, etc.)
 - Tamaño estimado (small=pequeño, medium=mediano, large=grande, extra_large=muy grande)
-- Dirección o barrio exacto donde fue visto/perdido
-- Ciudad o localidad
 - Fecha Y hora de la publicación original (leer el timestamp del post: "hace 8 min", "hace 2 hs", "ayer", etc., y calcular ISO 8601 desde HOY ${todayISO})
-- Número de WhatsApp, teléfono, o información de contacto del que publicó
+- Número de WhatsApp, teléfono, o información de contacto del que publicó (devolver SOLO el número, sin prefijos como "WhatsApp:" o "Tel:")
 - Cualquier seña particular: collar, cicatriz, tatuaje, microchip, nombre, comportamiento
 
 📝 IMPORTANTE PARA LA DESCRIPCIÓN:
@@ -95,23 +104,43 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
 
     if (imported.sourceType === 'screenshot' || imported.sourceType === 'photo') {
       // ── Imagen/screenshot → Claude Vision con OCR ──────────────────────────
+      //
+      // rawInput puede contener UNA URL o VARIAS separadas por '\n' (cuando
+      // el usuario sube 2 capturas: una con el perro y otra con la dirección
+      // o el contacto). Se las pasamos TODAS a Claude en el mismo mensaje
+      // para que cruce información entre las dos.
 
-      // Descargar la imagen desde Cloudinary como base64
-      const imageUrl = imported.rawInput;
-      console.log(`[ingest] Descargando imagen: ${imageUrl.substring(0, 80)}...`);
+      const imageUrls = imported.rawInput.split('\n').map((u: string) => u.trim()).filter(Boolean);
+      console.log(`[ingest] Procesando ${imageUrls.length} imagen(es)...`);
 
-      const imageRes = await fetch(imageUrl, {
-        headers: { 'Accept': 'image/*' },
-        signal: AbortSignal.timeout(20_000), // 20s timeout para la descarga
-      });
-      if (!imageRes.ok) throw new Error(`No se pudo descargar la imagen: ${imageRes.status} ${imageRes.statusText}`);
+      // Descargar todas las imágenes en paralelo
+      const imageBlocks = await Promise.all(imageUrls.map(async (url: string, i: number) => {
+        console.log(`[ingest] [${i + 1}/${imageUrls.length}] Descargando: ${url.substring(0, 80)}...`);
+        const imageRes = await fetch(url, {
+          headers: { 'Accept': 'image/*' },
+          signal: AbortSignal.timeout(20_000),
+        });
+        if (!imageRes.ok) throw new Error(`No se pudo descargar la imagen ${i + 1}: ${imageRes.status} ${imageRes.statusText}`);
 
-      const buffer      = await imageRes.arrayBuffer();
-      const base64      = Buffer.from(buffer).toString('base64');
-      const contentType = imageRes.headers.get('content-type') ?? 'image/jpeg';
-      const mediaType   = (contentType.split(';')[0].trim()) as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+        const buffer      = await imageRes.arrayBuffer();
+        const base64      = Buffer.from(buffer).toString('base64');
+        const contentType = imageRes.headers.get('content-type') ?? 'image/jpeg';
+        const mediaType   = (contentType.split(';')[0].trim()) as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
 
-      console.log(`[ingest] Imagen descargada (${(buffer.byteLength / 1024).toFixed(0)} KB, ${mediaType}). Llamando a Claude...`);
+        console.log(`[ingest] [${i + 1}/${imageUrls.length}] OK (${(buffer.byteLength / 1024).toFixed(0)} KB, ${mediaType})`);
+
+        return {
+          type: 'image' as const,
+          source: { type: 'base64' as const, media_type: mediaType, data: base64 },
+        };
+      }));
+
+      // Texto contextual: si hay más de una imagen, le aclaramos a Claude
+      const promptText = imageUrls.length > 1
+        ? `Te paso ${imageUrls.length} capturas del MISMO post de red social. Una tiene la foto del perro, la otra puede tener info adicional (dirección exacta, teléfono, descripción). Cruzá la información de TODAS para extraer los datos más completos posibles.\n\n${buildExtractionPrompt()}`
+        : buildExtractionPrompt();
+
+      console.log(`[ingest] Llamando a Claude con ${imageBlocks.length} imagen(es)...`);
 
       const response = await claude.messages.create({
         model: getModel(),
@@ -120,18 +149,8 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
           {
             role: 'user',
             content: [
-              {
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: mediaType,
-                  data: base64,
-                },
-              },
-              {
-                type: 'text',
-                text: buildExtractionPrompt(),
-              },
+              ...imageBlocks,
+              { type: 'text' as const, text: promptText },
             ],
           },
         ],
@@ -185,8 +204,13 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
       const loc       = extractedData.location;
       const hasCoords = loc && loc.lat !== 0 && loc.lng !== 0;
 
-      // Fotos: screenshots/photos ya están en Cloudinary
-      const photos = isScreenshot ? [imported.rawInput] : [];
+      // Fotos: screenshots/photos ya están en Cloudinary.
+      // Si hay múltiples (separadas por \n), las guardamos todas como photos
+      // del avistamiento — útil para que el usuario pueda ver todas las
+      // capturas originales del post.
+      const photos = isScreenshot
+        ? imported.rawInput.split('\n').map((u: string) => u.trim()).filter(Boolean)
+        : [];
 
       // Coordenadas: usar las de la IA, o fallback a centro de Argentina
       const lat = hasCoords ? loc!.lat : -38.4161;
@@ -214,18 +238,26 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
         seenAt = imported.createdAt;
       }
 
-      // Descripción: usar la natural que escribió la IA. Solo le agregamos
-      // el contacto al final si lo extrajo (eso sí es info útil que conviene
-      // tener visible y separada).
-      let description = extractedData.description ?? '';
-      if (extractedData.contactInfo) {
-        description = description.trim();
-        if (description) description += '\n\n';
-        description += `📞 Contacto: ${extractedData.contactInfo}`;
-      }
-      // Fallback mínimo si la IA no devolvió nada
-      if (!description.trim()) {
+      // Descripción: usar la natural que escribió la IA. El contacto NO se
+      // pega más en el texto — se guarda en su propio campo (contactPhone)
+      // y se muestra como botón clickeable en el frontend.
+      let description = (extractedData.description ?? '').trim();
+      if (!description) {
         description = 'Sin descripción extraída del post.';
+      }
+
+      // Contacto del DUEÑO del perro (extraído del post original).
+      // Limpiamos prefijos típicos como "WhatsApp:", "Tel:", etc., dejando
+      // solo el número (con caracteres válidos para tel: link).
+      let contactPhone: string | null = null;
+      if (extractedData.contactInfo) {
+        const cleaned = extractedData.contactInfo
+          .replace(/whatsapp[:.\s-]*/i, '')
+          .replace(/tel[éef]fono[:.\s-]*/i, '')
+          .replace(/contacto[:.\s-]*/i, '')
+          .replace(/wsp[:.\s-]*/i, '')
+          .trim();
+        contactPhone = cleaned || null;
       }
 
       const sighting = await prisma.sighting.create({
@@ -238,6 +270,7 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
           seenAt,
           photos,
           description,
+          contactPhone,
           source:          'social_import',
           importedCaseId:  imported.id,
         },

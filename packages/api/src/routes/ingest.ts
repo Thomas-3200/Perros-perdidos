@@ -73,26 +73,35 @@ export async function ingestRoutes(app: FastifyInstance) {
     let rawInput: string;
 
     if (contentType.includes('multipart')) {
-      // Caso de imagen/screenshot
+      // Caso de imagen/screenshot — el usuario puede subir hasta 2 imágenes
+      // (ej: una con la foto del perro y otra con la dirección o el contacto).
+      // Las URLs se guardan separadas por '\n' en rawInput, y la IA las
+      // procesa todas juntas en un solo mensaje a Claude.
       const fields: Record<string, string> = {};
-      let uploadedUrl = '';
+      const uploadedUrls: string[] = [];
+      const MAX_IMAGES = 2;
 
       const parts = req.parts();
       for await (const part of parts) {
         if (part.type === 'file') {
+          if (uploadedUrls.length >= MAX_IMAGES) {
+            // Drenar el stream del archivo extra para evitar timeouts
+            await part.toBuffer().catch(() => undefined);
+            continue;
+          }
           const result = await uploadFile(part, 'sightings');
-          uploadedUrl = result.url;
+          uploadedUrls.push(result.url);
         } else {
           fields[part.fieldname] = part.value as string;
         }
       }
 
-      if (!uploadedUrl) {
+      if (uploadedUrls.length === 0) {
         return reply.code(400).send({ success: false, message: 'No se recibió ninguna imagen.' });
       }
 
       sourceType = (fields.sourceType as 'screenshot' | 'photo') ?? 'photo';
-      rawInput   = uploadedUrl;
+      rawInput   = uploadedUrls.join('\n');
     } else {
       // JSON con texto
       const body = CreateImportSchema.parse(req.body);

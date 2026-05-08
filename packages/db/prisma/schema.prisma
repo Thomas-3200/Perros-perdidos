@@ -257,6 +257,11 @@ model Sighting {
   description    String?
   source         SightingSource    @default(app)
 
+  // Contacto extraído del post original (solo para imports de redes sociales).
+  // Es el teléfono del DUEÑO del perro perdido / autor del post original —
+  // separado del reporter (el usuario de la app que subió el screenshot).
+  contactPhone   String?
+
   importedCaseId String?
   importedCase   ImportedSocialCase? @relation(fields: [importedCaseId], references: [id])
 

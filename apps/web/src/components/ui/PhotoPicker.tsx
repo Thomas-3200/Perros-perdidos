@@ -52,7 +52,9 @@ export function PhotoPicker({ onFile, multiple, onFiles, galleryOnly, galleryLab
           <span className="text-base font-semibold text-gray-700">
             {galleryLabel ?? 'Subir desde galería'}
           </span>
-          <span className="text-xs text-gray-400">JPG, PNG o HEIC</span>
+          <span className="text-xs text-gray-400">
+            {multiple ? 'Podés elegir más de una' : 'JPG, PNG o HEIC'}
+          </span>
         </button>
         <input
           ref={galleryRef}
