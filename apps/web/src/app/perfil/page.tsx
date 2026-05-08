@@ -13,6 +13,7 @@ import {
 import { api } from '@/lib/api';
 import { getUser, clearSession, isLoggedIn, saveSession } from '@/lib/auth';
 import { AuthModal } from '@/components/auth/AuthModal';
+import { PushNotificationsPrompt } from '@/components/notifications/PushNotificationsPrompt';
 
 // ── Tipos ──────────────────────────────────────────────────────────────────────
 interface MyCaseItem {
@@ -994,6 +995,9 @@ export default function PerfilPage() {
           })}
         </div>
       )}
+
+      {/* Notificaciones push */}
+      <PushNotificationsPrompt variant="inline" />
 
       {/* Feedback */}
       <Link

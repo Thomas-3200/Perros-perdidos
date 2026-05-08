@@ -22,6 +22,7 @@ import {
 } from '@perros/shared';
 import { generateImageEmbedding, cosineSimilarity, extractDogAttributesFromImage } from './embedding.js';
 import { sendMatchEmail } from './email.js';
+import { sendPushToUser } from './push.js';
 
 export interface MatchResult {
   lostCaseId:      string;
@@ -183,7 +184,7 @@ async function basicProcessSighting(sightingId: string): Promise<MatchResult[]> 
           },
         }).catch(err => console.warn('[matching] Error al crear notificación:', err));
 
-        // Email al dueño (fire-and-forget — nunca bloquea el matching)
+        // Email + push al dueño (fire-and-forget — nunca bloquea el matching)
         const owner = await prisma.user.findUnique({
           where:  { id: lostCase.ownerId },
           select: { email: true, name: true },
@@ -200,6 +201,15 @@ async function basicProcessSighting(sightingId: string): Promise<MatchResult[]> 
             caseId:           lostCase.id,
           }).catch(err => console.warn('[matching] Error enviando email:', err));
         }
+
+        // Push notification al celular/desktop (a todos los devices del dueño)
+        sendPushToUser(lostCase.ownerId, {
+          title: `🐾 Posible avistamiento de ${lostCase.dog.name}`,
+          body:  `${Math.round(total * 100)}% de coincidencia${sighting.locationCity ? ` · ${sighting.locationCity}` : ''}. Tocá para ver.`,
+          url:   `/casos/${lostCase.id}`,
+          image: sighting.photos[0],
+          tag:   `match-${lostCase.id}`,
+        }).catch(err => console.warn('[matching] Error enviando push:', err));
       }
     }
 
@@ -335,6 +345,14 @@ async function aiProcessSighting(sightingId: string): Promise<MatchResult[]> {
             caseId:           lostCase.id,
           }).catch(err => console.warn('[matching:ai] Error enviando email:', err));
         }
+
+        sendPushToUser(lostCase.ownerId, {
+          title: `🐾 Posible avistamiento de ${lostCase.dog.name}`,
+          body:  `${Math.round(total * 100)}% de coincidencia${sighting.locationCity ? ` · ${sighting.locationCity}` : ''}. Tocá para ver.`,
+          url:   `/casos/${lostCase.id}`,
+          image: sighting.photos[0],
+          tag:   `match-${lostCase.id}`,
+        }).catch(err => console.warn('[matching:ai] Error enviando push:', err));
       }
     }
 

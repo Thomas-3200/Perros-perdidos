@@ -21,6 +21,7 @@ import { statsRoutes }         from './routes/stats.js';
 import { adminRoutes }         from './routes/admin.js';
 import { notificationsRoutes } from './routes/notifications.js';
 import { feedbackRoutes }       from './routes/feedback.js';
+import { pushRoutes }           from './routes/push.js';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -96,6 +97,7 @@ async function bootstrap() {
   await app.register(adminRoutes,         { prefix: '/api/v1/admin' });
   await app.register(notificationsRoutes, { prefix: '/api/v1/notifications' });
   await app.register(feedbackRoutes,       { prefix: '/api/v1/feedback' });
+  await app.register(pushRoutes,           { prefix: '/api/v1/push' });
 
   // ── Arrancar servidor ──────────────────────────────────────────────────────
   await app.listen({ port: PORT, host: HOST });

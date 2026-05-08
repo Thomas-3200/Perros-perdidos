@@ -10,6 +10,7 @@ import { Heart, MapPin, Users, PawPrint, Eye, Share2, Clock } from 'lucide-react
 import { ActiveCasesFeed } from '@/components/cases/ActiveCasesFeed';
 import { ReunionFeed }     from '@/components/reunion/ReunionFeed';
 import { StatsBar }        from '@/components/stats/StatsBar';
+import { PushBannerSmart } from '@/components/notifications/PushNotificationsPrompt';
 import { api }             from '@/lib/api';
 
 /* ── Mini feed de avistamientos recientes ──────────────────────────────── */
@@ -197,6 +198,9 @@ export default function HomePage() {
 
       {/* ── Contenido principal ───────────────────────────────────────────── */}
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-10">
+
+        {/* Banner inteligente: solo aparece si está logueado y aún no activó push */}
+        <PushBannerSmart />
 
         {/* Pulso de actividad */}
         <ActivityPulse />

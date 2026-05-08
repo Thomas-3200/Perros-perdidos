@@ -164,6 +164,7 @@ model User {
   supportSessions  SupportSession[]
   reviewedMatches  Match[]            @relation("ReviewedBy")
   feedback         Feedback[]
+  pushSubscriptions PushSubscription[]
 
   @@map("users")
 }
@@ -404,6 +405,25 @@ model QrProfile {
   createdAt   DateTime @default(now())
 
   @@map("qr_profiles")
+}
+
+// ─── PUSH SUBSCRIPTIONS (Web Push API) ───────────────────────────────────────
+
+model PushSubscription {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  endpoint     String   @unique // URL del push service del navegador
+  p256dh       String   // Clave pública del cliente (encriptación)
+  auth         String   // Auth secret del cliente
+
+  userAgent    String?  // Para identificar dispositivos
+  createdAt    DateTime @default(now())
+  lastUsedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 // ─── FEEDBACK DE USUARIOS ─────────────────────────────────────────────────────
