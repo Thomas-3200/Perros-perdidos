@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch --tsconfig tsconfig.json src/server.ts",
     "build": "tsc",
-    "start": "tsx src/server.ts",
+    "migrate:deploy": "pnpm --filter @perros/db exec prisma migrate deploy",
+    "start": "pnpm migrate:deploy && tsx src/server.ts",
     "lint": "tsc --noEmit",
     "test": "vitest run"
   },
