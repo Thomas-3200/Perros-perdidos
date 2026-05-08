@@ -30,7 +30,11 @@ const getAnthropic = () => {
   return _anthropic;
 };
 
-const EXTRACTION_PROMPT = `Eres un asistente especializado en analizar publicaciones sobre perros perdidos o encontrados en Argentina y Latinoamérica.
+function buildExtractionPrompt(): string {
+  const todayISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  return `Eres un asistente especializado en analizar publicaciones sobre perros perdidos o encontrados en Argentina y Latinoamérica.
+
+📅 LA FECHA DE HOY ES: ${todayISO}. Cualquier fecha que infieras debe ser cercana a hoy. Si el post dice "hace 8 minutos" significa hace 8 minutos contando desde ${todayISO}, NO una fecha vieja.
 
 Analiza el contenido provisto (puede ser texto de un post, un screenshot de red social, o una fotografía) y extraé toda la información posible con MÁXIMO detalle.
 
@@ -40,14 +44,19 @@ IMPORTANTE — extraé SIEMPRE que puedas:
 - Tamaño estimado (small=pequeño, medium=mediano, large=grande, extra_large=muy grande)
 - Dirección o barrio exacto donde fue visto/perdido
 - Ciudad o localidad
-- Fecha Y hora de la publicación original (leer el timestamp del post si lo hay, o inferir de frases como "esta mañana", "ayer", etc.)
+- Fecha Y hora de la publicación original (leer el timestamp del post: "hace 8 min", "hace 2 hs", "ayer", etc., y calcular ISO 8601 desde HOY ${todayISO})
 - Número de WhatsApp, teléfono, o información de contacto del que publicó
 - Cualquier seña particular: collar, cicatriz, tatuaje, microchip, nombre, comportamiento
+
+📝 IMPORTANTE PARA LA DESCRIPCIÓN:
+Escribí la descripción como lo haría una PERSONA NORMAL contando lo que vio o lo que pasó. NO uses bullets, NO uses formato "Atributo: valor". Que suene natural, humano, como si lo estuviera contando un vecino. Ejemplos:
+- ❌ MAL: "Raza: mestizo. Color: gris. Tamaño: pequeño. Tiene collar."
+- ✅ BIEN: "Es un perrito mestizo, chiquito, de pelaje gris con manchas blancas. Lleva un collar amarillo y se asusta con facilidad. Responde al nombre de Toby."
 
 Responde SOLO con JSON válido siguiendo esta estructura exacta (sin markdown, sin texto adicional):
 {
   "caseType": "lost|found|unknown",
-  "description": "descripción completa del perro: todas las señas particulares, collar, comportamiento, nombre si se sabe, etc.",
+  "description": "descripción NATURAL del perro y la situación, escrita como una persona, NO con bullets ni 'Raza: X'",
   "location": {
     "address": "dirección o barrio exacto si aparece, o null",
     "city": "ciudad o localidad, o null",
@@ -55,7 +64,7 @@ Responde SOLO con JSON válido siguiendo esta estructura exacta (sin markdown, s
     "lat": número de latitud estimada según la ciudad (ej: -34.6037 para Buenos Aires), o null,
     "lng": número de longitud estimada según la ciudad (ej: -58.3816 para Buenos Aires), o null
   },
-  "seenAt": "fecha y hora ISO 8601 de CUANDO FUE VISTO/PUBLICADO (ej: '2025-03-15T14:30:00'), o null si no se puede inferir",
+  "seenAt": "fecha y hora ISO 8601 calculada desde HOY ${todayISO} (ej si dice 'hace 8 min' y hoy es ${todayISO}, devolvé ${todayISO}T... con hora actual menos 8 min). Si no hay info clara, usá NULL en vez de inventar.",
   "contactInfo": "número de WhatsApp, teléfono o email del contacto si aparece en el contenido, o null",
   "reward": número en moneda local o null,
   "dogAttributes": {
@@ -68,6 +77,9 @@ Responde SOLO con JSON válido siguiendo esta estructura exacta (sin markdown, s
 
 Si el contenido no tiene relación con perros perdidos o encontrados, pon confidence: 0 y caseType: "unknown".
 Si hay información parcial, extraé lo que puedas y ajustá confidence proporcionalmente.`;
+}
+
+const EXTRACTION_PROMPT = buildExtractionPrompt(); // legacy fallback
 
 export async function parseImportedCase(importedCaseId: string): Promise<void> {
   const imported = await prisma.importedSocialCase.findUniqueOrThrow({
@@ -118,7 +130,7 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
               },
               {
                 type: 'text',
-                text: EXTRACTION_PROMPT,
+                text: buildExtractionPrompt(),
               },
             ],
           },
@@ -141,7 +153,7 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
       const response = await claude.messages.create({
         model: getModel(),
         max_tokens: 1024,
-        system: EXTRACTION_PROMPT,
+        system: buildExtractionPrompt(),
         messages: [
           { role: 'user', content },
         ],
@@ -183,24 +195,38 @@ export async function parseImportedCase(importedCaseId: string): Promise<void> {
       // Ciudad: usar la extraída o marcar como "Sin ubicación"
       const city = loc?.city ?? 'Sin ubicación especificada';
 
-      // Fecha: usar la extraída por la IA (fecha real del post), o la de creación como fallback
-      const seenAt = extractedData.seenAt ?? imported.createdAt;
+      // Fecha: usar la extraída por la IA, pero validarla.
+      // La IA puede caer en fechas viejas de su training si no logra inferir desde el post.
+      // Si la fecha extraída es de hace más de 30 días, asumimos que la IA se equivocó
+      // y usamos la fecha en que el usuario importó el caso (hoy o ayer).
+      const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+      let seenAt: Date;
+      if (extractedData.seenAt) {
+        const aiDate = new Date(extractedData.seenAt);
+        const ageMs  = Date.now() - aiDate.getTime();
+        if (ageMs > THIRTY_DAYS_MS) {
+          console.log(`[ingest] Fecha extraída por IA (${aiDate.toISOString()}) es de hace ${Math.round(ageMs / 86_400_000)} días — usando createdAt`);
+          seenAt = imported.createdAt;
+        } else {
+          seenAt = aiDate;
+        }
+      } else {
+        seenAt = imported.createdAt;
+      }
 
-      // Descripción enriquecida: combinar descripción base + atributos del perro + contacto extraído
-      const attrs = extractedData.dogAttributes;
-      const parts: string[] = [];
-
-      const SIZE_LABELS: Record<string, string> = {
-        small: 'pequeño', medium: 'mediano', large: 'grande', extra_large: 'muy grande',
-      };
-
-      if (attrs?.breed)               parts.push(`Raza: ${attrs.breed}`);
-      if (attrs?.color?.length)       parts.push(`Color: ${attrs.color.join(', ')}`);
-      if (attrs?.size)                parts.push(`Tamaño: ${SIZE_LABELS[attrs.size] ?? attrs.size}`);
-      if (extractedData.description)  parts.push(extractedData.description);
-      if (extractedData.contactInfo)  parts.push(`Contacto del post: ${extractedData.contactInfo}`);
-
-      const description = parts.join(' · ') || extractedData.description;
+      // Descripción: usar la natural que escribió la IA. Solo le agregamos
+      // el contacto al final si lo extrajo (eso sí es info útil que conviene
+      // tener visible y separada).
+      let description = extractedData.description ?? '';
+      if (extractedData.contactInfo) {
+        description = description.trim();
+        if (description) description += '\n\n';
+        description += `📞 Contacto: ${extractedData.contactInfo}`;
+      }
+      // Fallback mínimo si la IA no devolvió nada
+      if (!description.trim()) {
+        description = 'Sin descripción extraída del post.';
+      }
 
       const sighting = await prisma.sighting.create({
         data: {
