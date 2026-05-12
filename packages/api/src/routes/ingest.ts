@@ -35,21 +35,21 @@ export async function ingestRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const { sub } = req.user as { sub: string };
 
-    // Admins y moderadores NO tienen límite — son los que siembran casos
-    // para mantener viva la plataforma y hacer trabajo de moderación.
+    // Admins y moderadores NO tienen NINGÚN límite — son los que siembran
+    // casos para mantener viva la plataforma. Confiamos en su criterio para
+    // el control de costos.
     const me = await prisma.user.findUnique({
       where:  { id: sub },
       select: { role: true },
     });
     const isStaff = me?.role === 'admin' || me?.role === 'moderator';
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
     if (!isStaff) {
-      // Tope por usuario por DÍA: 15 imports/usuario/día
-      // (subido de 5 para no frenar a usuarios entusiastas — el tope global
-      // sigue protegiendo contra abuso a escala)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Tope por usuario por DÍA: 15 imports/usuario/día para usuarios normales
+      // (subido de 5 para no frenar a entusiastas legítimos)
       const userTodayCount = await prisma.importedSocialCase.count({
         where: { submittedById: sub, createdAt: { gte: today } },
       });
@@ -62,22 +62,24 @@ export async function ingestRoutes(app: FastifyInstance) {
           },
         });
       }
-    }
 
-    // Tope global por DÍA: máximo 200 importaciones IA en toda la app
-    // (a ~$0.005 USD/imagen = ~$30 USD/mes en el peor caso de uso pleno).
-    // Aplica TAMBIÉN a staff porque protege el presupuesto, no contra abuso.
-    const todayCount = await prisma.importedSocialCase.count({
-      where: { createdAt: { gte: today } },
-    });
-    if (todayCount >= 200) {
-      return reply.code(429).send({
-        success: false,
-        error: {
-          code: 'DAILY_QUOTA_REACHED',
-          message: 'Alcanzamos el límite diario de análisis IA. Intentá de nuevo mañana.',
+      // Tope global por DÍA: 200 imports/día en toda la app entre usuarios no-staff
+      // (a ~$0.005 USD/imagen = ~$30 USD/mes en el peor caso).
+      const todayCount = await prisma.importedSocialCase.count({
+        where: {
+          createdAt: { gte: today },
+          submittedBy: { role: { notIn: ['admin', 'moderator'] } },
         },
       });
+      if (todayCount >= 200) {
+        return reply.code(429).send({
+          success: false,
+          error: {
+            code: 'DAILY_QUOTA_REACHED',
+            message: 'Alcanzamos el límite diario de análisis IA. Intentá de nuevo mañana.',
+          },
+        });
+      }
     }
 
     // Puede venir como JSON (text) o multipart (screenshot/photo)

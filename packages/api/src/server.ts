@@ -83,7 +83,7 @@ async function bootstrap() {
   app.get('/health', async () => ({
     status:    'ok',
     service:   'perros-perdidos-api',
-    version:   '2026-05-08-multiimage', // bump manual en cada deploy importante
+    version:   '2026-05-12-staff-unlimited', // bump manual en cada deploy importante
     timestamp: new Date().toISOString(),
     workers:   'running',
   }));
