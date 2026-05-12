@@ -35,28 +35,42 @@ export async function ingestRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const { sub } = req.user as { sub: string };
 
-    // Tope por usuario por DÍA: 5 imports/usuario/día
+    // Admins y moderadores NO tienen límite — son los que siembran casos
+    // para mantener viva la plataforma y hacer trabajo de moderación.
+    const me = await prisma.user.findUnique({
+      where:  { id: sub },
+      select: { role: true },
+    });
+    const isStaff = me?.role === 'admin' || me?.role === 'moderator';
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const userTodayCount = await prisma.importedSocialCase.count({
-      where: { submittedById: sub, createdAt: { gte: today } },
-    });
-    if (userTodayCount >= 5) {
-      return reply.code(429).send({
-        success: false,
-        error: {
-          code: 'USER_DAILY_QUOTA',
-          message: 'Alcanzaste el límite de 5 importaciones diarias. Volvé mañana.',
-        },
+
+    if (!isStaff) {
+      // Tope por usuario por DÍA: 15 imports/usuario/día
+      // (subido de 5 para no frenar a usuarios entusiastas — el tope global
+      // sigue protegiendo contra abuso a escala)
+      const userTodayCount = await prisma.importedSocialCase.count({
+        where: { submittedById: sub, createdAt: { gte: today } },
       });
+      if (userTodayCount >= 15) {
+        return reply.code(429).send({
+          success: false,
+          error: {
+            code: 'USER_DAILY_QUOTA',
+            message: 'Alcanzaste el límite de 15 importaciones diarias. Volvé mañana.',
+          },
+        });
+      }
     }
 
-    // Tope global por DÍA: máximo 100 importaciones IA en toda la app
-    // (a ~$0.003 USD/imagen = ~$10 USD/mes en el peor caso)
+    // Tope global por DÍA: máximo 200 importaciones IA en toda la app
+    // (a ~$0.005 USD/imagen = ~$30 USD/mes en el peor caso de uso pleno).
+    // Aplica TAMBIÉN a staff porque protege el presupuesto, no contra abuso.
     const todayCount = await prisma.importedSocialCase.count({
       where: { createdAt: { gte: today } },
     });
-    if (todayCount >= 100) {
+    if (todayCount >= 200) {
       return reply.code(429).send({
         success: false,
         error: {
